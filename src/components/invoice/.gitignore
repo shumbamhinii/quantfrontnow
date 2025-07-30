@@ -1,0 +1,12 @@
+# Node & general
+node_modules/
+dist/
+build/
+
+*.log
+
+
+
+# Backend specific
+backend/nodeapi/node_modules/
+
