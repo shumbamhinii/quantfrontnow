@@ -173,7 +173,9 @@ const ProductsPage = () => {
     setLoading(true);
     // Simulate API call delay
     const timer = setTimeout(() => {
-      setProducts(HARDCODED_PRODUCTS);
+      // Set products to empty array if no products exist to trigger the empty state UI
+      // For demonstration, let's make it empty initially, then load after a delay
+      setProducts(HARDCODED_PRODUCTS); // Or [] to test the empty state
       messageApi.success('Products loaded successfully (hardcoded).');
       setLoading(false);
     }, 500);
@@ -499,107 +501,134 @@ const ProductsPage = () => {
                 <Spin size="large" tip="Loading products..." />
               </div>
             ) : (
-              isMobile ? (
-                <Space direction='vertical' style={{ width: '100%' }}>
-                  {filteredProducts.map(product => (
-                    <Card
-                      key={product.id}
-                      title={product.name}
-                      size='small'
-                      styles={{ body: { padding: 16 } }}
-                      extra={
-                        <Space>
-                          <Button onClick={() => openRestockModal(product)} disabled={!isUserAuthenticated}>
-                            Restock
-                          </Button>
-                          <Button
-                            icon={<EditOutlined />}
-                            onClick={() => openForm(product)}
-                            disabled={!isUserAuthenticated}
-                          />
-                          <Popconfirm
-                            title='Delete product?'
-                            onConfirm={() => handleDelete(product.id)}
-                            okText='Yes'
-                            cancelText='No'
-                            disabled={!isUserAuthenticated}
-                          >
-                            <Button icon={<DeleteOutlined />} danger disabled={!isUserAuthenticated} />
-                          </Popconfirm>
-                        </Space>
-                      }
+              filteredProducts.length === 0 ? (
+                <div style={{ textAlign: 'center', padding: '50px 20px', border: '1px dashed #d9d9d9', borderRadius: '8px', marginTop: '20px' }}>
+                  <p style={{ fontSize: '18px', color: '#595959', marginBottom: '15px' }}>No products found!</p>
+                  <p style={{ color: '#8c8c8c', marginBottom: '25px' }}>
+                    It looks like you haven't added any products yet.
+                    You can add them manually or import from a receipt.
+                  </p>
+                  <Space>
+                    <Button
+                      type='primary'
+                      icon={<PlusOutlined />}
+                      onClick={() => openForm(null)}
+                      disabled={!isUserAuthenticated}
                     >
-                      <p>Type: {product.type}</p>
-                      <p>Price: R{product.price || product.unitPrice}</p>
-                      <p>
-                        <strong>Unit Purchase Price:</strong>{' '}
-                        {product.unitPurchasePrice
-                          ? `R${product.unitPurchasePrice}`
-                          : '-'}
-                      </p>
-                      <p>
-                        <strong>Current Quantity: {product.qty ?? 0}</strong>
-                        {product.unit ? ` ${product.unit}` : ''}
-                      </p>
-                    </Card>
-                  ))}
-                </Space>
+                      Add Product Manually
+                    </Button>
+                    <Button
+                      icon={<UploadOutlined />}
+                      onClick={() => setImportDrawerOpen(true)}
+                      disabled={!isUserAuthenticated}
+                    >
+                      Scan/Upload Receipt
+                    </Button>
+                  </Space>
+                </div>
               ) : (
-                <Table<Product>
-                  columns={[
-                    { title: 'Name', dataIndex: 'name', key: 'name' },
-                    { title: 'Type', dataIndex: 'type', key: 'type' },
-                    {
-                      title: 'Quantity',
-                      dataIndex: 'qty',
-                      key: 'qty',
-                      render: (qty, rec) =>
-                        rec.unit ? `${qty ?? 0} ${rec.unit}` : qty ?? 0,
-                    },
-                    {
-                      title: 'Price',
-                      dataIndex: 'price',
-                      key: 'price',
-                      render: (_, r) => `R${r.unitPrice ?? r.price ?? 0}`,
-                    },
-                    {
-                      title: 'Unit Purchase Price',
-                      dataIndex: 'unitPurchasePrice',
-                      key: 'unitPurchasePrice',
-                      render: val => (val ? `R${val}` : '-'),
-                    },
-                    {
-                      title: 'Actions',
-                      key: 'actions',
-                      render: (_, record) => (
-                        <Space>
-                          <Button onClick={() => openRestockModal(record)} disabled={!isUserAuthenticated}>
-                            Restock
-                          </Button>
-                          <Button
-                            icon={<EditOutlined />}
-                            onClick={() => openForm(record)}
-                            disabled={!isUserAuthenticated}
-                          />
-                          <Popconfirm
-                            title='Delete product?'
-                            onConfirm={() => handleDelete(record.id)}
-                            okText='Yes'
-                            cancelText='No'
-                            disabled={!isUserAuthenticated}
-                          >
-                            <Button icon={<DeleteOutlined />} danger disabled={!isUserAuthenticated} />
-                          </Popconfirm>
-                        </Space>
-                      ),
-                    },
-                  ]}
-                  dataSource={filteredProducts}
-                  rowKey='id'
-                  loading={loading}
-                  pagination={{ pageSize: 6 }}
-                  scroll={{ x: true }}
-                />
+                isMobile ? (
+                  <Space direction='vertical' style={{ width: '100%' }}>
+                    {filteredProducts.map(product => (
+                      <Card
+                        key={product.id}
+                        title={product.name}
+                        size='small'
+                        styles={{ body: { padding: 16 } }}
+                        extra={
+                          <Space>
+                            <Button onClick={() => openRestockModal(product)} disabled={!isUserAuthenticated}>
+                              Restock
+                            </Button>
+                            <Button
+                              icon={<EditOutlined />}
+                              onClick={() => openForm(product)}
+                              disabled={!isUserAuthenticated}
+                            />
+                            <Popconfirm
+                              title='Delete product?'
+                              onConfirm={() => handleDelete(product.id)}
+                              okText='Yes'
+                              cancelText='No'
+                              disabled={!isUserAuthenticated}
+                            >
+                              <Button icon={<DeleteOutlined />} danger disabled={!isUserAuthenticated} />
+                            </Popconfirm>
+                          </Space>
+                        }
+                      >
+                        <p>Type: {product.type}</p>
+                        <p>Price: R{product.price || product.unitPrice}</p>
+                        <p>
+                          <strong>Unit Purchase Price:</strong>{' '}
+                          {product.unitPurchasePrice
+                            ? `R${product.unitPurchasePrice}`
+                            : '-'}
+                        </p>
+                        <p>
+                          <strong>Current Quantity: {product.qty ?? 0}</strong>
+                          {product.unit ? ` ${product.unit}` : ''}
+                        </p>
+                      </Card>
+                    ))}
+                  </Space>
+                ) : (
+                  <Table<Product>
+                    columns={[
+                      { title: 'Name', dataIndex: 'name', key: 'name' },
+                      { title: 'Type', dataIndex: 'type', key: 'type' },
+                      {
+                        title: 'Quantity',
+                        dataIndex: 'qty',
+                        key: 'qty',
+                        render: (qty, rec) =>
+                          rec.unit ? `${qty ?? 0} ${rec.unit}` : qty ?? 0,
+                      },
+                      {
+                        title: 'Price',
+                        dataIndex: 'price',
+                        key: 'price',
+                        render: (_, r) => `R${r.unitPrice ?? r.price ?? 0}`,
+                      },
+                      {
+                        title: 'Unit Purchase Price',
+                        dataIndex: 'unitPurchasePrice',
+                        key: 'unitPurchasePrice',
+                        render: val => (val ? `R${val}` : '-'),
+                      },
+                      {
+                        title: 'Actions',
+                        key: 'actions',
+                        render: (_, record) => (
+                          <Space>
+                            <Button onClick={() => openRestockModal(record)} disabled={!isUserAuthenticated}>
+                              Restock
+                            </Button>
+                            <Button
+                              icon={<EditOutlined />}
+                              onClick={() => openForm(record)}
+                              disabled={!isUserAuthenticated}
+                            />
+                            <Popconfirm
+                              title='Delete product?'
+                              onConfirm={() => handleDelete(record.id)}
+                              okText='Yes'
+                              cancelText='No'
+                              disabled={!isUserAuthenticated}
+                            >
+                              <Button icon={<DeleteOutlined />} danger disabled={!isUserAuthenticated} />
+                            </Popconfirm>
+                          </Space>
+                        ),
+                      },
+                    ]}
+                    dataSource={filteredProducts}
+                    rowKey='id'
+                    loading={loading}
+                    pagination={{ pageSize: 6 }}
+                    scroll={{ x: true }}
+                  />
+                )
               )
             )}
           </Tabs.TabPane>

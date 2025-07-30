@@ -316,7 +316,7 @@ export function QuotationList() {
 
     try {
       // Change the URL to target the quotation PDF endpoint
-      const response = await fetch(`${API_BASE_URL}/api/quotations/${quotation.id}/pdf`, { // Corrected endpoint for quotation PDF
+      const response = await fetch(`${API_BASE_URL}/api/invoices/${quotation.id}/pdf`, { // Corrected endpoint for quotation PDF
         headers: {
           'Authorization': `Bearer ${token}`, // Include the JWT token
         },

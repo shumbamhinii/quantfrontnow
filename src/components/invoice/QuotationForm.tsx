@@ -14,6 +14,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Plus, XCircle, Loader2, ChevronLeft } from 'lucide-react';
 
 import { useToast } from '@/components/ui/use-toast';
+import { useAuth } from '../../AuthPage'; // Import useAuth
 
 // Define API Base URL
 const API_BASE_URL = 'https://quantnow.onrender.com';
@@ -89,6 +90,8 @@ const VAT_OPTIONS = [
 
 export function QuotationForm({ quotation, onClose, onSubmitSuccess }: QuotationFormProps) {
   const { toast } = useToast();
+  const { isAuthenticated } = useAuth(); // Get authentication status from useAuth
+  const token = localStorage.getItem('token'); // Retrieve the token explicitly from localStorage
 
   // Helper to calculate default expiry date (e.g., 30 days from now)
   const getDefaultExpiryDate = (quotationDateString: string) => {
@@ -144,15 +147,28 @@ export function QuotationForm({ quotation, onClose, onSubmitSuccess }: Quotation
   // --- useEffect to Fetch Products/Services and Populate Form for Editing ---
   useEffect(() => {
     const fetchProducts = async () => {
+      if (!isAuthenticated || !token) {
+        toast({
+          title: 'Authentication Required',
+          description: 'Please log in to load products and services.',
+          variant: 'destructive',
+        });
+        setProductsServices([]); // Clear products if not authenticated
+        return;
+      }
+
       try {
-        // Corrected API path for products
-        const res = await fetch(`${API_BASE_URL}/api/products`);
+        const res = await fetch(`${API_BASE_URL}/api/products`, {
+          headers: {
+            'Authorization': `Bearer ${token}`, // Use the retrieved token
+          },
+        });
         if (!res.ok) {
           const errorData = await res.json();
           throw new Error(errorData.error || `HTTP error! status: ${res.status}`);
         }
-        const data: ProductService[] = await res.json(); // Backend returns ProductFrontend which matches ProductService
-        setProductsServices(data); // Data should already be in correct numeric format from backend mapProductToFrontend
+        const data: ProductService[] = await res.json();
+        setProductsServices(data);
       } catch (error: any) {
         console.error('Failed to fetch products/services:', error);
         toast({
@@ -188,9 +204,14 @@ export function QuotationForm({ quotation, onClose, onSubmitSuccess }: Quotation
       // Set initial customerSearchQuery for display
       if (quotation.customer_id) {
         const fetchInitialCustomer = async () => {
+          if (!isAuthenticated || !token) return; // Ensure authenticated and token exists before fetching
+
           try {
-            // Corrected API path for single customer
-            const res = await fetch(`${API_BASE_URL}/api/customers/${quotation.customer_id}`);
+            const res = await fetch(`${API_BASE_URL}/api/customers/${quotation.customer_id}`, {
+              headers: {
+                'Authorization': `Bearer ${token}`, // Use the retrieved token
+              },
+            });
             if (res.ok) {
               const data = await res.json();
               setCustomerSearchQuery(data.name); // Initialize customerSearchQuery
@@ -204,11 +225,18 @@ export function QuotationForm({ quotation, onClose, onSubmitSuccess }: Quotation
         setCustomerSearchQuery(quotation.customer_name); // Initialize customerSearchQuery
       }
     }
-  }, [quotation, toast]);
+  }, [quotation, toast, isAuthenticated, token]); // Added isAuthenticated and token to dependencies
 
   // --- useEffect to fetch customer suggestions based on debounced search query ---
   useEffect(() => {
     const fetchCustomerSuggestions = async () => {
+      if (!isAuthenticated || !token) {
+        setCustomerSuggestions([]);
+        setIsSearchingCustomers(false);
+        setShowCustomerSuggestions(false);
+        return;
+      }
+
       if (debouncedCustomerSearchQuery.length < 2) {
         setCustomerSuggestions([]);
         setIsSearchingCustomers(false);
@@ -219,8 +247,11 @@ export function QuotationForm({ quotation, onClose, onSubmitSuccess }: Quotation
       setIsSearchingCustomers(true);
       setShowCustomerSuggestions(true); // Show suggestions when searching
       try {
-        // Corrected API path for customer search
-        const res = await fetch(`${API_BASE_URL}/api/customers/search?query=${debouncedCustomerSearchQuery}`);
+        const res = await fetch(`${API_BASE_URL}/api/customers/search?query=${debouncedCustomerSearchQuery}`, {
+          headers: {
+            'Authorization': `Bearer ${token}`, // Use the retrieved token
+          },
+        });
         if (!res.ok) {
           const errorData = await res.json();
           throw new Error(errorData.error || `HTTP error! status: ${res.status}`);
@@ -241,7 +272,7 @@ export function QuotationForm({ quotation, onClose, onSubmitSuccess }: Quotation
     };
 
     fetchCustomerSuggestions();
-  }, [debouncedCustomerSearchQuery, toast]);
+  }, [debouncedCustomerSearchQuery, toast, isAuthenticated, token]); // Added isAuthenticated and token to dependencies
 
 
   // --- useEffect to Calculate Total Amount ---
@@ -392,6 +423,16 @@ export function QuotationForm({ quotation, onClose, onSubmitSuccess }: Quotation
     e.preventDefault();
     setIsLoading(true);
 
+    if (!isAuthenticated || !token) {
+      toast({
+        title: 'Authentication Required',
+        description: 'You must be logged in to create or update quotations.',
+        variant: 'destructive',
+      });
+      setIsLoading(false);
+      return;
+    }
+
     // Client-side validation
     if (
       !formData.quotation_number ||
@@ -465,7 +506,10 @@ export function QuotationForm({ quotation, onClose, onSubmitSuccess }: Quotation
     try {
       const response = await fetch(url, {
         method: method,
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`, // Use the retrieved token
+        },
         body: JSON.stringify(payload),
       });
 
@@ -522,6 +566,7 @@ export function QuotationForm({ quotation, onClose, onSubmitSuccess }: Quotation
                 onChange={handleInputChange}
                 placeholder='e.g., QUO-2024-001'
                 required
+                disabled={!isAuthenticated || isLoading}
               />
             </div>
             <div>
@@ -537,6 +582,7 @@ export function QuotationForm({ quotation, onClose, onSubmitSuccess }: Quotation
                   className="mb-2"
                   ref={customerInputRef}
                   autoComplete="off"
+                  disabled={!isAuthenticated || isLoading}
                 />
                 {isSearchingCustomers && customerSearchQuery.length >= 2 && (
                   <div className="flex items-center text-sm text-gray-500 mt-1">
@@ -594,6 +640,7 @@ export function QuotationForm({ quotation, onClose, onSubmitSuccess }: Quotation
                 value={formData.quotation_date}
                 onChange={handleInputChange}
                 required
+                disabled={!isAuthenticated || isLoading}
               />
             </div>
             <div>
@@ -605,6 +652,7 @@ export function QuotationForm({ quotation, onClose, onSubmitSuccess }: Quotation
                 value={formData.expiry_date}
                 onChange={handleInputChange}
                 required
+                disabled={!isAuthenticated || isLoading}
               />
             </div>
             <div>
@@ -614,6 +662,7 @@ export function QuotationForm({ quotation, onClose, onSubmitSuccess }: Quotation
                 value={formData.status}
                 onValueChange={value => handleSelectChange('status', value)}
                 required
+                disabled={!isAuthenticated || isLoading}
               >
                 <SelectTrigger id='status'>
                   <SelectValue placeholder='Select Status' />
@@ -636,6 +685,7 @@ export function QuotationForm({ quotation, onClose, onSubmitSuccess }: Quotation
                 onChange={handleInputChange}
                 placeholder='e.g., ZAR'
                 required
+                disabled={!isAuthenticated || isLoading}
               />
             </div>
           </div>
@@ -656,6 +706,7 @@ export function QuotationForm({ quotation, onClose, onSubmitSuccess }: Quotation
               onChange={handleInputChange}
               placeholder='Any additional notes for the quotation...'
               rows={3}
+              disabled={!isAuthenticated || isLoading}
             />
           </div>
         </CardContent>
@@ -674,6 +725,7 @@ export function QuotationForm({ quotation, onClose, onSubmitSuccess }: Quotation
                   name={`product_service_id-${index}`}
                   value={item.product_service_id || 'custom-item'}
                   onValueChange={value => handleProductServiceSelect(index, value === 'custom-item' ? '' : value)}
+                  disabled={!isAuthenticated || isLoading}
                 >
                   <SelectTrigger id={`product_service_id-${index}`}>
                     <SelectValue placeholder='Select Product/Service' />
@@ -697,6 +749,7 @@ export function QuotationForm({ quotation, onClose, onSubmitSuccess }: Quotation
                   onChange={e => handleLineItemChange(index, 'description', e.target.value)}
                   placeholder='Description'
                   required
+                  disabled={!isAuthenticated || isLoading}
                 />
               </div>
               <div>
@@ -711,6 +764,7 @@ export function QuotationForm({ quotation, onClose, onSubmitSuccess }: Quotation
                   min='0'
                   step='0.01'
                   required
+                  disabled={!isAuthenticated || isLoading}
                 />
               </div>
               <div>
@@ -725,6 +779,7 @@ export function QuotationForm({ quotation, onClose, onSubmitSuccess }: Quotation
                   min='0'
                   step='0.01'
                   required
+                  disabled={!isAuthenticated || isLoading}
                 />
               </div>
               <div>
@@ -733,6 +788,7 @@ export function QuotationForm({ quotation, onClose, onSubmitSuccess }: Quotation
                   name='tax_rate'
                   value={item.tax_rate.toString()} // Convert number to string for Select component
                   onValueChange={value => handleLineItemChange(index, 'tax_rate', value)} // Value is already a string
+                  disabled={!isAuthenticated || isLoading}
                 >
                   <SelectTrigger id={`tax_rate-${index}`}>
                     <SelectValue placeholder='Select VAT' />
@@ -750,13 +806,13 @@ export function QuotationForm({ quotation, onClose, onSubmitSuccess }: Quotation
                 <Label className='whitespace-nowrap'>
                   Total: {formData.currency}{(item.line_total ?? 0).toFixed(2)}
                 </Label>
-                <Button type='button' variant='ghost' size='sm' onClick={() => removeLineItem(index)}>
+                <Button type='button' variant='ghost' size='sm' onClick={() => removeLineItem(index)} disabled={!isAuthenticated || isLoading}>
                   <XCircle className='h-4 w-4 text-red-500' />
                 </Button>
               </div>
             </div>
           ))}
-          <Button type='button' variant='outline' onClick={addLineItem} className='w-full'>
+          <Button type='button' variant='outline' onClick={addLineItem} className='w-full' disabled={!isAuthenticated || isLoading}>
             <Plus className='h-4 w-4 mr-2' /> Add Line Item
           </Button>
         </CardContent>
@@ -770,7 +826,7 @@ export function QuotationForm({ quotation, onClose, onSubmitSuccess }: Quotation
         <Button type='button' variant='outline' onClick={onClose} disabled={isLoading}>
           Cancel
         </Button>
-        <Button type='submit' disabled={isLoading}>
+        <Button type='submit' disabled={!isAuthenticated || isLoading}>
           {isLoading && <Loader2 className='mr-2 h-4 w-4 animate-spin' />}
           {quotation ? 'Update Quotation' : 'Create Quotation'}
         </Button>
