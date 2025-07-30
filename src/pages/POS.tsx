@@ -114,21 +114,23 @@ export default function POSScreen() {
   const [amountPaid, setAmountPaid] = useState(0);
   const [dueDate, setDueDate] = useState<string | null>(null);
 
-  const { isAuthenticated } = useAuth(); // Get authentication status
-  const token = localStorage.getItem('token'); // Retrieve the token
+  const { isAuthenticated, hasPermission } = useAuth(); // Get isAuthenticated and hasPermission
+  const canSubmitSale = hasPermission('submit_sale'); // Check for 'submit_sale' permission
+  const canCreateCustomer = hasPermission('create_customer'); // Check for 'create_customer' permission
 
   // --- Declare isLoading state ---
   const [isLoading, setIsLoading] = useState(false);
 
   // Helper to get authorization headers
   const getAuthHeaders = useCallback(() => {
+    const token = localStorage.getItem('token'); // Retrieve token here
     return token ? { 'Authorization': `Bearer ${token}` } : {};
-  }, [token]);
+  }, []); // No dependency on token needed here, as it's fetched inside
 
   // --- START: FETCH DATA FROM API ON COMPONENT MOUNT ---
   useEffect(() => {
     async function fetchCustomers() {
-      if (!isAuthenticated || !token) {
+      if (!isAuthenticated) { // Only check isAuthenticated here
         messageApi.warning('Please log in to load customers.');
         setCustomers([]);
         return;
@@ -152,7 +154,7 @@ export default function POSScreen() {
     }
 
     async function fetchProducts() {
-      if (!isAuthenticated || !token) {
+      if (!isAuthenticated) { // Only check isAuthenticated here
         messageApi.warning('Please log in to load products.');
         setProducts([]);
         return;
@@ -175,20 +177,25 @@ export default function POSScreen() {
       }
     }
 
-    if (isAuthenticated && token) {
+    // Call fetch functions only if authenticated
+    if (isAuthenticated) {
       fetchCustomers();
       fetchProducts();
     } else {
       setCustomers([]);
       setProducts([]);
     }
-  }, [isAuthenticated, token, getAuthHeaders, messageApi]); // Add isAuthenticated, token, getAuthHeaders, messageApi to dependencies
+  }, [isAuthenticated, getAuthHeaders, messageApi]); // Removed token from dependencies as getAuthHeaders handles it
   // --- END: FETCH DATA FROM API ON COMPONENT MOUNT ---
 
   // Add to cart logic
   const addToCart = () => {
     if (!isAuthenticated) {
       messageApi.error('Authentication required to add items to cart.');
+      return;
+    }
+    if (!canSubmitSale) { // Check for specific permission
+      messageApi.error('You do not have permission to add items to cart.');
       return;
     }
 
@@ -272,8 +279,12 @@ export default function POSScreen() {
     address?: string;
     taxId?: string;
   }) => {
-    if (!isAuthenticated || !token) {
+    if (!isAuthenticated) { // Only check isAuthenticated
       messageApi.error('Authentication required to add new customers.');
+      return;
+    }
+    if (!canCreateCustomer) { // Check for specific permission
+      messageApi.error('You do not have permission to add new customers.');
       return;
     }
     setIsLoading(true); // Set loading true
@@ -341,8 +352,12 @@ export default function POSScreen() {
 
   // --- START: MODIFIED SALE SUBMISSION TO USE API ---
   const handleSubmit = async () => {
-    if (!isAuthenticated || !token) {
+    if (!isAuthenticated) { // Only check isAuthenticated
       messageApi.error('Authentication required to submit sales.');
+      return;
+    }
+    if (!canSubmitSale) { // Check for specific permission
+      messageApi.error('You do not have permission to submit sales.');
       return;
     }
     if (cart.length === 0) {
@@ -502,7 +517,7 @@ export default function POSScreen() {
             <Button
               size='small'
               onClick={() => setProductQty(q => Math.max(1, q - 1))}
-              disabled={!isAuthenticated || isLoading || (!selectedProduct && !showCustomProductForm)}
+              disabled={!isAuthenticated || isLoading || (!selectedProduct && !showCustomProductForm) || !canSubmitSale} // Disable if no permission
             >
               -
             </Button>
@@ -513,7 +528,7 @@ export default function POSScreen() {
               value={productQty}
               onChange={value => setProductQty(value ?? 1)}
               style={{ width: 60 }}
-              disabled={!isAuthenticated || isLoading || (!selectedProduct && !showCustomProductForm)}
+              disabled={!isAuthenticated || isLoading || (!selectedProduct && !showCustomProductForm) || !canSubmitSale} // Disable if no permission
             />
           </Col>
           <Col>
@@ -523,7 +538,7 @@ export default function POSScreen() {
                 const max = selectedProduct?.stock_quantity ?? Infinity; // Use stock_quantity
                 setProductQty(q => Math.min(q + 1, max));
               }}
-              disabled={!isAuthenticated || isLoading || (!selectedProduct && !showCustomProductForm)}
+              disabled={!isAuthenticated || isLoading || (!selectedProduct && !showCustomProductForm) || !canSubmitSale} // Disable if no permission
             >
               +
             </Button>
@@ -532,7 +547,7 @@ export default function POSScreen() {
             <Button
               type='primary'
               onClick={addToCart}
-              disabled={!isAuthenticated || isLoading || (!selectedProduct && !showCustomProductForm) || (showCustomProductForm && (!customProductName.trim() || customProductUnitPrice <= 0))}
+              disabled={!isAuthenticated || isLoading || (!selectedProduct && !showCustomProductForm) || (showCustomProductForm && (!customProductName.trim() || customProductUnitPrice <= 0)) || !canSubmitSale} // Disable if no permission
             >
               Add to Cart
             </Button>
@@ -564,7 +579,7 @@ export default function POSScreen() {
                       danger
                       size='small'
                       onClick={() => removeFromCart(r.id)}
-                      disabled={!isAuthenticated} // Disable if not authenticated
+                      disabled={!isAuthenticated || !canSubmitSale} // Disable if not authenticated or no permission
                     >
                       Remove
                     </Button>
@@ -597,7 +612,7 @@ export default function POSScreen() {
                       size='small'
                       danger
                       onClick={() => removeFromCart(item.id)}
-                      disabled={!isAuthenticated} // Disable if not authenticated
+                      disabled={!isAuthenticated || !canSubmitSale} // Disable if not authenticated or no permission
                     >
                       Remove
                     </Button>
@@ -617,7 +632,7 @@ export default function POSScreen() {
                 value={paymentType}
                 onChange={setPaymentType}
                 style={{ width: '100%' }}
-                disabled={!isAuthenticated || isLoading} // Disable if not authenticated or loading
+                disabled={!isAuthenticated || isLoading || !canSubmitSale} // Disable if no permission
               >
                 <Option value='Cash'>Cash</Option>
                 <Option value='Bank'>Bank</Option>
@@ -632,7 +647,7 @@ export default function POSScreen() {
                   value={amountPaid}
                   onChange={value => setAmountPaid(value ?? 0)}
                   style={{ width: '100%' }}
-                  disabled={!isAuthenticated || isLoading} // Disable if not authenticated or loading
+                  disabled={!isAuthenticated || isLoading || !canSubmitSale} // Disable if no permission
                 />
                 <div>
                   <Text strong>
@@ -652,7 +667,7 @@ export default function POSScreen() {
                   value={dueDate || ''}
                   onChange={e => setDueDate(e.target.value)}
                   style={{ width: '100%' }}
-                  disabled={!isAuthenticated || isLoading} // Disable if not authenticated or loading
+                  disabled={!isAuthenticated || isLoading || !canSubmitSale} // Disable if no permission
                 />
                 {selectedCustomer && (
                   <Text type='warning' style={{ color: 'orange' }}>
@@ -674,6 +689,7 @@ export default function POSScreen() {
             disabled={
               !isAuthenticated || // Disable if not authenticated
               isLoading || // Disable if loading
+              !canSubmitSale || // Disable if no submit_sale permission
               cart.length === 0 ||
               (paymentType === 'Cash' && amountPaid < total) ||
               (paymentType === 'Credit' && !selectedCustomer)
@@ -737,7 +753,7 @@ export default function POSScreen() {
               type='dashed'
               icon={<PlusOutlined />}
               onClick={() => setShowNewCustomer(true)}
-              disabled={!isAuthenticated || isLoading} // Disable if not authenticated or loading
+              disabled={!isAuthenticated || isLoading || !canCreateCustomer} // Disable if no permission
             >
               Add New Customer
             </Button>
@@ -753,29 +769,29 @@ export default function POSScreen() {
                 label='Full Name'
                 rules={[{ required: true }]}
               >
-                <Input disabled={!isAuthenticated || isLoading} />
+                <Input disabled={!isAuthenticated || isLoading || !canCreateCustomer} />
               </Form.Item>
               <Form.Item
                 name='phone'
                 label='Phone Number'
                 rules={[{ required: true }]}
               >
-                <Input disabled={!isAuthenticated || isLoading} />
+                <Input disabled={!isAuthenticated || isLoading || !canCreateCustomer} />
               </Form.Item>
               <Form.Item
                 name='email'
                 label='Email (Optional)'
                 rules={[{ type: 'email', message: 'Please enter a valid email!' }]}
               >
-                <Input disabled={!isAuthenticated || isLoading} />
+                <Input disabled={!isAuthenticated || isLoading || !canCreateCustomer} />
               </Form.Item>
               <Form.Item name='address' label='Address (Optional)'>
-                <Input.TextArea rows={2} disabled={!isAuthenticated || isLoading} />
+                <Input.TextArea rows={2} disabled={!isAuthenticated || isLoading || !canCreateCustomer} />
               </Form.Item>
               <Form.Item name='taxId' label='Tax ID / VAT Number (Optional)'>
-                <Input disabled={!isAuthenticated || isLoading} />
+                <Input disabled={!isAuthenticated || isLoading || !canCreateCustomer} />
               </Form.Item>
-              <Button htmlType='submit' type='primary' block disabled={!isAuthenticated || isLoading}>
+              <Button htmlType='submit' type='primary' block disabled={!isAuthenticated || isLoading || !canCreateCustomer}>
                 Save & Select
               </Button>
             </Form>
@@ -804,7 +820,7 @@ export default function POSScreen() {
                 value={productSearch}
                 onChange={e => setProductSearch(e.target.value)}
                 style={{ marginBottom: 10 }}
-                disabled={!isAuthenticated || isLoading}
+                disabled={!isAuthenticated || isLoading || !canSubmitSale} // Disable if no permission
               />
               <div style={{ maxHeight: 270, overflowY: 'auto', marginBottom: 10 }}>
                 {products
@@ -846,7 +862,7 @@ export default function POSScreen() {
                   setSelectedProduct(null); // Clear any selected product
                   setProductSearch(''); // Clear search
                 }}
-                disabled={!isAuthenticated || isLoading}
+                disabled={!isAuthenticated || isLoading || !canSubmitSale} // Disable if no permission
               >
                 Add Custom Product
               </Button>
@@ -858,40 +874,35 @@ export default function POSScreen() {
                 <Input
                   value={customProductName}
                   onChange={e => setCustomProductName(e.target.value)}
-                  placeholder='e.g., Custom Service, Special Item'
-                  disabled={!isAuthenticated || isLoading}
+                  disabled={!isAuthenticated || isLoading || !canSubmitSale} // Disable if no permission
                 />
               </Form.Item>
-              <Form.Item label='Unit Price' required>
+              <Form.Item label='Unit Price (R)' required>
                 <InputNumber
                   min={0}
                   step={0.01}
                   value={customProductUnitPrice}
                   onChange={value => setCustomProductUnitPrice(value ?? 0)}
                   style={{ width: '100%' }}
-                  formatter={value => `R ${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
-                  parser={(value: any) => value.replace(/R\s?|(,*)/g, '')}
-                  disabled={!isAuthenticated || isLoading}
+                  disabled={!isAuthenticated || isLoading || !canSubmitSale} // Disable if no permission
                 />
               </Form.Item>
-              <Form.Item label='Description (Optional)'>
+              <Form.Item label='Description'>
                 <Input.TextArea
                   rows={2}
                   value={customProductDescription}
                   onChange={e => setCustomProductDescription(e.target.value)}
-                  placeholder='Brief description of the custom item'
-                  disabled={!isAuthenticated || isLoading}
+                  disabled={!isAuthenticated || isLoading || !canSubmitSale} // Disable if no permission
                 />
               </Form.Item>
-              <Form.Item label='Tax Rate' required>
+              <Form.Item label='VAT Rate' required>
                 <Select
-                  value={customProductTaxRate.toString()}
-                  onChange={value => setCustomProductTaxRate(parseFloat(value))}
-                  style={{ width: '100%' }}
-                  disabled={!isAuthenticated || isLoading}
+                  value={customProductTaxRate}
+                  onChange={value => setCustomProductTaxRate(value)}
+                  disabled={!isAuthenticated || isLoading || !canSubmitSale} // Disable if no permission
                 >
-                  {VAT_OPTIONS.map((option) => (
-                    <Option key={option.value} value={option.value.toString()}>
+                  {VAT_OPTIONS.map(option => (
+                    <Option key={option.value} value={option.value}>
                       {option.label}
                     </Option>
                   ))}
@@ -900,14 +911,13 @@ export default function POSScreen() {
               <Button
                 type='primary'
                 block
-                onClick={addToCart}
-                disabled={!isAuthenticated || isLoading || !customProductName.trim() || customProductUnitPrice <= 0 || productQty <= 0}
+                onClick={addToCart} // Use addToCart for custom product as well
+                disabled={!isAuthenticated || isLoading || !canSubmitSale || !customProductName.trim() || customProductUnitPrice <= 0} // Disable if no permission or invalid custom product
               >
-                Add Custom Item to Cart
+                Add Custom Product to Cart
               </Button>
               <Button
                 block
-                type='default'
                 style={{ marginTop: 8 }}
                 onClick={() => setShowCustomProductForm(false)}
                 disabled={!isAuthenticated || isLoading}

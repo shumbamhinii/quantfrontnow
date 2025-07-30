@@ -47,6 +47,13 @@ import { QuotationForm } from '../invoice/QuotationForm'; // Corrected import pa
 import { useToast } from '@/components/ui/use-toast'; // Import useToast
 import { useAuth } from '../../AuthPage'; // Corrected import path for useAuth
 
+// Declare global jspdf if it's loaded via CDN
+declare global {
+  interface Window {
+    jspdf: any;
+  }
+}
+
 // Define API Base URL
 const API_BASE_URL = 'https://quantnow.onrender.com';
 
@@ -119,6 +126,7 @@ export function QuotationList() {
   const [isLoadingList, setIsLoadingList] = useState(true); // Loading state for the quotation list
   const [isFormLoading, setIsFormLoading] = useState(false); // New: Loading state for the form details
   const [isConverting, setIsConverting] = useState(false); // New: Loading state for conversion
+  const [isPdfLibLoaded, setIsPdfLibLoaded] = useState(false); // New: State to track PDF library loading
 
   // States for Email functionality
   const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
@@ -129,6 +137,55 @@ export function QuotationList() {
 
   const { isAuthenticated } = useAuth(); // Get authentication status
   const token = localStorage.getItem('token'); // Retrieve the token
+
+  // Effect to dynamically load jsPDF and autoTable
+  useEffect(() => {
+    if (window.jspdf && (window.jspdf.jsPDF.API as any).autoTable) {
+      setIsPdfLibLoaded(true);
+      return;
+    }
+
+    const loadScript = (src: string, id: string, callback: () => void) => {
+      if (document.getElementById(id)) {
+        callback();
+        return;
+      }
+      const script = document.createElement('script');
+      script.src = src;
+      script.id = id;
+      script.onload = callback;
+      script.onerror = () => {
+        console.error(`Failed to load script: ${src}`);
+        toast({
+          title: 'Script Load Error',
+          description: `Failed to load PDF library from ${src}. Please check your network.`,
+          variant: 'destructive',
+        });
+      };
+      document.head.appendChild(script);
+    };
+
+    // Load jsPDF first
+    loadScript(
+      'https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js',
+      'jspdf-script',
+      () => {
+        // Then load autoTable after jsPDF is loaded
+        loadScript(
+          'https://unpkg.com/jspdf-autotable@3.5.23/dist/jspdf.plugin.autotable.js',
+          'jspdf-autotable-script',
+          () => {
+            setIsPdfLibLoaded(true);
+            toast({
+              title: 'PDF Library Loaded',
+              description: 'PDF generation capabilities are now available.',
+            });
+          }
+        );
+      }
+    );
+  }, [toast]);
+
 
   // Function to fetch quotations from the backend
   const fetchQuotations = useCallback(async () => {
@@ -302,49 +359,138 @@ export function QuotationList() {
     }
   };
 
-  // --- UPDATED: Handle PDF Download to generate Quotation PDF ---
+  // --- UPDATED: Handle PDF Download to generate Quotation PDF client-side ---
   const handleDownloadPdf = async (quotation: Quotation) => {
-    if (!token) {
-      console.warn('No token found. Cannot download PDF.');
+    if (!isPdfLibLoaded || !window.jspdf || !(window.jspdf.jsPDF.API as any).autoTable) {
       toast({
-        title: 'Authentication Error',
-        description: 'You are not authenticated. Please log in to download PDFs.',
+        title: 'PDF Library Not Ready',
+        description: 'PDF generation library is still loading or failed to load. Please try again in a moment.',
         variant: 'destructive',
       });
       return;
     }
 
     try {
-      // Change the URL to target the quotation PDF endpoint
-      const response = await fetch(`${API_BASE_URL}/api/invoices/${quotation.id}/pdf`, { // Corrected endpoint for quotation PDF
-        headers: {
-          'Authorization': `Bearer ${token}`, // Include the JWT token
-        },
+      const doc = new window.jspdf.jsPDF();
+      let yPos = 20;
+
+      // Set company header
+      doc.setFontSize(18);
+      doc.setFont(undefined, 'bold');
+      doc.text('Quantilytix', 14, yPos); // Top left
+
+      // Document Title
+      doc.setFontSize(24);
+      doc.text('QUOTATION', doc.internal.pageSize.width / 2, yPos, { align: 'center' });
+      yPos += 15;
+
+      // Quotation Details (Right aligned)
+      doc.setFontSize(10);
+      doc.setFont(undefined, 'normal');
+      doc.text(`Quotation #: ${quotation.quotation_number}`, doc.internal.pageSize.width - 14, yPos, { align: 'right' });
+      yPos += 7;
+      doc.text(`Date: ${new Date(quotation.quotation_date).toLocaleDateString('en-ZA')}`, doc.internal.pageSize.width - 14, yPos, { align: 'right' });
+      yPos += 7;
+      doc.text(`Expiry Date: ${quotation.expiry_date ? new Date(quotation.expiry_date).toLocaleDateString('en-ZA') : 'N/A'}`, doc.internal.pageSize.width - 14, yPos, { align: 'right' });
+      yPos += 15; // Space after quotation details
+
+      // Bill To (Left aligned)
+      doc.setFontSize(12);
+      doc.setFont(undefined, 'bold');
+      doc.text('Bill To:', 14, yPos);
+      yPos += 7;
+      doc.setFontSize(10);
+      doc.setFont(undefined, 'normal');
+      doc.text(quotation.customer_name, 14, yPos);
+      yPos += 7;
+      if (quotation.customer_email) {
+        doc.text(quotation.customer_email, 14, yPos);
+        yPos += 7;
+      }
+      yPos += 10; // Space before table
+
+      // Line Items Table
+      const tableColumn = ['Item', 'Description', 'Qty', 'Unit Price (R)', 'Tax Rate (%)', 'Line Total (R)'];
+      const tableRows: any[] = [];
+      let subtotal = 0;
+      let totalTax = 0;
+
+      quotation.line_items?.forEach(item => {
+        const itemTax = item.quantity * item.unit_price * item.tax_rate;
+        const itemSubtotal = item.quantity * item.unit_price;
+        subtotal += itemSubtotal;
+        totalTax += itemTax;
+
+        tableRows.push([
+          item.product_service_name || 'Custom Item',
+          item.description,
+          item.quantity,
+          item.unit_price.toFixed(2),
+          (item.tax_rate * 100).toFixed(0),
+          item.line_total.toFixed(2),
+        ]);
       });
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to download PDF.');
+
+      // @ts-ignore - autoTable is a plugin, not directly part of jsPDF's core type definitions
+      doc.autoTable({
+        startY: yPos,
+        head: [tableColumn],
+        body: tableRows,
+        theme: 'striped',
+        headStyles: { fillColor: [20, 100, 150] },
+        styles: { fontSize: 9, cellPadding: 3 },
+        columnStyles: {
+          0: { cellWidth: 30 },
+          1: { cellWidth: 'auto' },
+          2: { cellWidth: 15, halign: 'right' },
+          3: { cellWidth: 25, halign: 'right' },
+          4: { cellWidth: 20, halign: 'right' },
+          5: { cellWidth: 25, halign: 'right' },
+        },
+        didDrawPage: function (data: any) {
+          // Footer
+          let pageCount = doc.internal.pages.length;
+          doc.setFontSize(8);
+          doc.text('Page ' + data.pageNumber + ' of ' + pageCount, data.settings.margin.left, doc.internal.pageSize.height - 10);
+        }
+      });
+
+      // Get the final Y position after the table
+      yPos = (doc as any).autoTable.previous.finalY + 10;
+
+      // Totals Summary
+      doc.setFontSize(10);
+      doc.setFont(undefined, 'normal');
+      doc.text(`Subtotal: R${subtotal.toFixed(2)}`, doc.internal.pageSize.width - 14, yPos, { align: 'right' });
+      yPos += 7;
+      doc.text(`Tax: R${totalTax.toFixed(2)}`, doc.internal.pageSize.width - 14, yPos, { align: 'right' });
+      yPos += 7;
+      doc.setFontSize(12);
+      doc.setFont(undefined, 'bold');
+      doc.text(`TOTAL: R${quotation.total_amount.toFixed(2)}`, doc.internal.pageSize.width - 14, yPos, { align: 'right' });
+      yPos += 15;
+
+      // Notes
+      if (quotation.notes) {
+        doc.setFontSize(10);
+        doc.setFont(undefined, 'bold');
+        doc.text('Notes:', 14, yPos);
+        yPos += 7;
+        doc.setFont(undefined, 'normal');
+        doc.text(quotation.notes, 14, yPos, { maxWidth: doc.internal.pageSize.width - 28 });
       }
 
-      const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `Quotation_${quotation.quotation_number}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      window.URL.revokeObjectURL(url);
+      doc.save(`Quotation_${quotation.quotation_number}.pdf`);
 
       toast({
         title: 'Download Started',
-        description: `Downloading Quotation ${quotation.quotation_number}.pdf`,
+        description: `Generating and downloading Quotation ${quotation.quotation_number}.pdf`,
       });
     } catch (error: any) {
-      console.error('Error downloading PDF:', error);
+      console.error('Error generating PDF:', error);
       toast({
-        title: 'Download Failed',
-        description: error.message || 'Failed to download quotation PDF. Please try again.',
+        title: 'PDF Generation Failed',
+        description: error.message || 'Failed to generate quotation PDF. Please try again.',
         variant: 'destructive',
       });
     }
@@ -732,8 +878,14 @@ export function QuotationList() {
                           <Button variant='ghost' size='sm' onClick={() => handleEditQuotationClick(quotation)}>
                             <Edit className='h-4 w-4' />
                           </Button>
-                          {/* UPDATED: Download PDF Button */}
-                          <Button variant='ghost' size='sm' title='Download PDF' onClick={() => handleDownloadPdf(quotation)}>
+                          {/* UPDATED: Download PDF Button - disabled if PDF lib not loaded */}
+                          <Button
+                            variant='ghost'
+                            size='sm'
+                            title='Download PDF'
+                            onClick={() => handleDownloadPdf(quotation)}
+                            disabled={!isPdfLibLoaded}
+                          >
                             <FileText className='h-4 w-4' />
                           </Button>
                           {/* NEW: Send Email Button */}
@@ -832,63 +984,69 @@ export function QuotationList() {
                 </p>
               )}
 
-              <h3 className='font-semibold text-lg mt-6'>Line Items</h3>
-              {selectedQuotation.line_items && selectedQuotation.line_items.length > 0 ? (
-                <div className='border rounded-lg overflow-hidden'>
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Product/Service</TableHead>
-                        <TableHead>Description</TableHead>
-                        <TableHead>Qty</TableHead>
-                        <TableHead>Unit Price</TableHead>
-                        <TableHead>Tax Rate</TableHead>
-                        <TableHead>Line Total</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {selectedQuotation.line_items.map((item, idx) => (
-                        <TableRow key={item.id || idx}>
-                          <TableCell>{item.product_service_name || 'Custom Item'}</TableCell>
+              <h3 className='text-lg font-semibold mt-4'>Line Items</h3>
+              <div className='border rounded-lg overflow-x-auto'>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Item</TableHead>
+                      <TableHead>Description</TableHead>
+                      <TableHead>Qty</TableHead>
+                      <TableHead>Unit Price</TableHead>
+                      <TableHead>Tax Rate</TableHead>
+                      <TableHead>Line Total</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {selectedQuotation.line_items && selectedQuotation.line_items.length > 0 ? (
+                      selectedQuotation.line_items.map((item, index) => (
+                        <TableRow key={item.id || index}>
+                          <TableCell>{item.product_service_name}</TableCell>
                           <TableCell>{item.description}</TableCell>
                           <TableCell>{item.quantity}</TableCell>
-                          <TableCell>R{(item.unit_price ?? 0).toFixed(2)}</TableCell>
-                          <TableCell>{((item.tax_rate ?? 0) * 100).toFixed(2)}%</TableCell>
-                          <TableCell>R{(item.line_total ?? 0).toFixed(2)}</TableCell>
+                          <TableCell>R{item.unit_price.toFixed(2)}</TableCell>
+                          <TableCell>{(item.tax_rate * 100).toFixed(0)}%</TableCell>
+                          <TableCell>R{item.line_total.toFixed(2)}</TableCell>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
-                </div>
-              ) : (
-                <p className='text-muted-foreground'>No line items for this quotation.</p>
-              )}
+                      ))
+                    ) : (
+                      <TableRow>
+                        <TableCell colSpan={6} className='text-center py-4 text-muted-foreground'>
+                          No line items for this quotation.
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
+              <DialogFooter>
+                <Button variant='outline' onClick={() => setIsViewModalOpen(false)}>
+                  Close
+                </Button>
+              </DialogFooter>
             </div>
           ) : (
-            <div className='flex justify-center items-center h-40 text-muted-foreground'>
-              Select a quotation to view its details.
-            </div>
+            <p>No quotation selected.</p>
           )}
         </DialogContent>
       </Dialog>
 
-      {/* NEW: Send Email Dialog */}
+      {/* Email Quotation Modal */}
       <Dialog open={isEmailModalOpen} onOpenChange={setIsEmailModalOpen}>
         <DialogContent className='sm:max-w-[425px]'>
           <DialogHeader>
-            <DialogTitle>Send Quotation via Email</DialogTitle>
+            <DialogTitle>Send Quotation Email</DialogTitle>
             <DialogDescription>
-              Send quotation {selectedQuotation?.quotation_number} to your customer.
+              Send quotation {selectedQuotation?.quotation_number} to your customer via email.
             </DialogDescription>
           </DialogHeader>
           <div className='grid gap-4 py-4'>
             <div className='grid grid-cols-4 items-center gap-4'>
-              <Label htmlFor='recipientEmail' className='text-right'>
-                Recipient Email
+              <Label htmlFor='emailRecipient' className='text-right'>
+                To
               </Label>
               <Input
-                id='recipientEmail'
-                type='email'
+                id='emailRecipient'
                 value={emailRecipient}
                 onChange={(e) => setEmailRecipient(e.target.value)}
                 className='col-span-3'

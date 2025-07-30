@@ -52,7 +52,7 @@ interface NavigationItem {
 const navigationItems: NavigationItem[] = [
   { title: 'Dashboard', url: '/', icon: Home },
     {
-    title: 'POS Transact',
+    title: 'POS Transact ',
     url: '/pos',
     icon: CreditCard,
     children: [

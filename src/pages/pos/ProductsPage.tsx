@@ -139,7 +139,9 @@ function useProductSalesStats(products: Product[], isAuthenticated: boolean, mes
 }
 
 const ProductsPage = () => {
-  const { isAuthenticated } = useAuth(); // Only get isAuthenticated from context
+  const { isAuthenticated, hasPermission } = useAuth(); // Get isAuthenticated and hasPermission
+  const canCreateProduct = hasPermission('create_product');
+  const canDeleteProduct = hasPermission('delete_product');
 
   const [messageApi, contextHolder] = message.useMessage();
   const [products, setProducts] = useState<Product[]>([]);
@@ -227,6 +229,16 @@ const ProductsPage = () => {
       messageApi.error('Please log in to manage products.');
       return;
     }
+    // Only allow opening form if user has permission to create/edit products
+    if (!canCreateProduct && !record) { // If adding new product and no permission
+      messageApi.error('You do not have permission to add products.');
+      return;
+    }
+    if (!canCreateProduct && record) { // If editing existing product and no permission
+      messageApi.error('You do not have permission to edit products.');
+      return;
+    }
+
     setEditingProduct(record);
     if (isMobile) setManualDrawerOpen(true);
     else setModalVisible(true);
@@ -236,6 +248,10 @@ const ProductsPage = () => {
   const handleDelete = async (id: string) => {
     if (!isUserAuthenticated) {
       messageApi.error('Authentication required to delete products.');
+      return;
+    }
+    if (!canDeleteProduct) {
+      messageApi.error('You do not have permission to delete products.');
       return;
     }
     setLoading(true);
@@ -254,6 +270,11 @@ const ProductsPage = () => {
       messageApi.error('Please log in to restock products.');
       return;
     }
+    // Restock also requires 'create_product' permission as it modifies stock
+    if (!canCreateProduct) {
+      messageApi.error('You do not have permission to restock products.');
+      return;
+    }
     setRestockProduct(product);
     restockForm.resetFields();
     setRestockModalVisible(true);
@@ -262,6 +283,10 @@ const ProductsPage = () => {
   const handleRestock = async (values: { qty: number; purchasePrice: number }) => {
     if (!isUserAuthenticated || !restockProduct) {
       messageApi.error('Authentication or product information missing for restock.');
+      return;
+    }
+    if (!canCreateProduct) { // Restock is a form of product modification
+      messageApi.error('You do not have permission to restock products.');
       return;
     }
 
@@ -291,6 +316,10 @@ const ProductsPage = () => {
   const handleSave = async (values: ProductFormValues) => {
     if (!isUserAuthenticated) {
       messageApi.error('Authentication required to save products. Please ensure you are logged in.');
+      return;
+    }
+    if (!canCreateProduct) { // Save (create/update) requires permission
+      messageApi.error('You do not have permission to save products.');
       return;
     }
 
@@ -354,7 +383,7 @@ const ProductsPage = () => {
         label='Type'
         rules={[{ required: true, message: 'Please select Type' }]}
       >
-        <Select placeholder='Select type'>
+        <Select placeholder='Select type' disabled={!canCreateProduct}>
           <Select.Option value='product'>Product</Select.Option>
           <Select.Option value='service'>Service</Select.Option>
         </Select>
@@ -364,7 +393,7 @@ const ProductsPage = () => {
         label='Name'
         rules={[{ required: true, message: 'Please enter Name' }]}
       >
-        <Input placeholder='Enter name' />
+        <Input placeholder='Enter name' disabled={!canCreateProduct} />
       </Form.Item>
       {/* For products, show selling & purchase price side by side (add only).
           For edit, just show selling price (purchase price can be edited on restock) */}
@@ -378,7 +407,7 @@ const ProductsPage = () => {
                 rules={[{ required: true }]}
                 style={{ marginBottom: 0 }}
               >
-                <InputNumber min={0} style={{ width: '100%' }} />
+                <InputNumber min={0} style={{ width: '100%' }} disabled={!canCreateProduct} />
               </Form.Item>
             </Col>
             <Col span={12}>
@@ -388,7 +417,7 @@ const ProductsPage = () => {
                 rules={[{ required: true }]}
                 style={{ marginBottom: 0 }}
               >
-                <InputNumber min={0} style={{ width: '100%' }} />
+                <InputNumber min={0} style={{ width: '100%' }} disabled={!canCreateProduct} />
               </Form.Item>
             </Col>
           </Row>
@@ -399,17 +428,17 @@ const ProductsPage = () => {
           label='Selling Price'
           rules={[{ required: true }]}
         >
-          <InputNumber min={0} style={{ width: '100%' }} />
+          <InputNumber min={0} style={{ width: '100%' }} disabled={!canCreateProduct} />
         </Form.Item>
       )}
 
       {formType === 'product' && (
         <>
           <Form.Item name='unit' label='Unit' rules={[{ required: true }]}>
-            <Input placeholder='e.g. kg, litre, box' />
+            <Input placeholder='e.g. kg, litre, box' disabled={!canCreateProduct} />
           </Form.Item>
           <Form.Item name='qty' label='Quantity'>
-            <InputNumber min={0} style={{ width: '100%' }} />
+            <InputNumber min={0} style={{ width: '100%' }} disabled={!canCreateProduct} />
           </Form.Item>
           <Form.Item required>
             <Row gutter={12}>
@@ -420,7 +449,7 @@ const ProductsPage = () => {
                   rules={[{ required: true, message: 'Enter Min Qty' }]}
                   style={{ marginBottom: 0 }}
                 >
-                  <InputNumber min={0} style={{ width: '100%' }} />
+                  <InputNumber min={0} style={{ width: '100%' }} disabled={!canCreateProduct} />
                 </Form.Item>
               </Col>
               <Col span={12}>
@@ -430,7 +459,7 @@ const ProductsPage = () => {
                   rules={[{ required: true, message: 'Enter Max Qty' }]}
                   style={{ marginBottom: 0 }}
                 >
-                  <InputNumber min={0} style={{ width: '100%' }} />
+                  <InputNumber min={0} style={{ width: '100%' }} disabled={!canCreateProduct} />
                 </Form.Item>
               </Col>
             </Row>
@@ -443,11 +472,11 @@ const ProductsPage = () => {
           label='Available Value'
           rules={[{ required: false }]}
         >
-          <InputNumber min={0} style={{ width: '100%' }} />
+          <InputNumber min={0} style={{ width: '100%' }} disabled={!canCreateProduct} />
         </Form.Item>
       )}
       <Form.Item>
-        <Button type='primary' htmlType='submit' block disabled={loading}>
+        <Button type='primary' htmlType='submit' block disabled={loading || !canCreateProduct}>
           {editingProduct ? 'Update' : 'Create'}
         </Button>
       </Form.Item>
@@ -472,7 +501,7 @@ const ProductsPage = () => {
                   icon={<PlusOutlined />}
                   block={isMobile}
                   onClick={() => openForm(null)}
-                  disabled={!isUserAuthenticated}
+                  disabled={!isUserAuthenticated || !canCreateProduct} // Disable if no create permission
                 >
                   Add Product
                 </Button>
@@ -480,7 +509,7 @@ const ProductsPage = () => {
                   icon={<UploadOutlined />}
                   block={isMobile}
                   onClick={() => setImportDrawerOpen(true)}
-                  disabled={!isUserAuthenticated}
+                  disabled={!isUserAuthenticated || !canCreateProduct} // Assuming import also requires create permission
                 >
                   Scan/Upload Receipt
                 </Button>
@@ -513,14 +542,14 @@ const ProductsPage = () => {
                       type='primary'
                       icon={<PlusOutlined />}
                       onClick={() => openForm(null)}
-                      disabled={!isUserAuthenticated}
+                      disabled={!isUserAuthenticated || !canCreateProduct} // Disable if no create permission
                     >
                       Add Product Manually
                     </Button>
                     <Button
                       icon={<UploadOutlined />}
                       onClick={() => setImportDrawerOpen(true)}
-                      disabled={!isUserAuthenticated}
+                      disabled={!isUserAuthenticated || !canCreateProduct} // Assuming import also requires create permission
                     >
                       Scan/Upload Receipt
                     </Button>
@@ -537,22 +566,22 @@ const ProductsPage = () => {
                         styles={{ body: { padding: 16 } }}
                         extra={
                           <Space>
-                            <Button onClick={() => openRestockModal(product)} disabled={!isUserAuthenticated}>
+                            <Button onClick={() => openRestockModal(product)} disabled={!isUserAuthenticated || !canCreateProduct}> {/* Restock requires create permission */}
                               Restock
                             </Button>
                             <Button
                               icon={<EditOutlined />}
                               onClick={() => openForm(product)}
-                              disabled={!isUserAuthenticated}
+                              disabled={!isUserAuthenticated || !canCreateProduct} // Edit requires create permission
                             />
                             <Popconfirm
                               title='Delete product?'
                               onConfirm={() => handleDelete(product.id)}
                               okText='Yes'
                               cancelText='No'
-                              disabled={!isUserAuthenticated}
+                              disabled={!isUserAuthenticated || !canDeleteProduct} // Delete requires delete permission
                             >
-                              <Button icon={<DeleteOutlined />} danger disabled={!isUserAuthenticated} />
+                              <Button icon={<DeleteOutlined />} danger disabled={!isUserAuthenticated || !canDeleteProduct} />
                             </Popconfirm>
                           </Space>
                         }
@@ -601,22 +630,22 @@ const ProductsPage = () => {
                         key: 'actions',
                         render: (_, record) => (
                           <Space>
-                            <Button onClick={() => openRestockModal(record)} disabled={!isUserAuthenticated}>
+                            <Button onClick={() => openRestockModal(record)} disabled={!isUserAuthenticated || !canCreateProduct}> {/* Restock requires create permission */}
                               Restock
                             </Button>
                             <Button
                               icon={<EditOutlined />}
                               onClick={() => openForm(record)}
-                              disabled={!isUserAuthenticated}
+                              disabled={!isUserAuthenticated || !canCreateProduct} // Edit requires create permission
                             />
                             <Popconfirm
                               title='Delete product?'
                               onConfirm={() => handleDelete(record.id)}
                               okText='Yes'
                               cancelText='No'
-                              disabled={!isUserAuthenticated}
+                              disabled={!isUserAuthenticated || !canDeleteProduct} // Delete requires delete permission
                             >
-                              <Button icon={<DeleteOutlined />} danger disabled={!isUserAuthenticated} />
+                              <Button icon={<DeleteOutlined />} danger disabled={!isUserAuthenticated || !canDeleteProduct} />
                             </Popconfirm>
                           </Space>
                         ),
@@ -686,17 +715,17 @@ const ProductsPage = () => {
             label='Quantity to Add'
             rules={[{ required: true }]}
           >
-            <InputNumber min={1} style={{ width: '100%' }} />
+            <InputNumber min={1} style={{ width: '100%' }} disabled={!canCreateProduct} />
           </Form.Item>
           <Form.Item
             name='purchasePrice'
             label='Purchase Price (total price)'
             rules={[{ required: true }]}
           >
-            <InputNumber min={0} style={{ width: '100%' }} />
+            <InputNumber min={0} style={{ width: '100%' }} disabled={!canCreateProduct} />
           </Form.Item>
           <Form.Item>
-            <Button type='primary' htmlType='submit' block disabled={!isUserAuthenticated}>
+            <Button type='primary' htmlType='submit' block disabled={!isUserAuthenticated || !canCreateProduct || loading}>
               Restock
             </Button>
           </Form.Item>

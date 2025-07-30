@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useCallback, createContext, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   Card,
@@ -13,40 +13,123 @@ import { Label } from '@/components/ui/label';
 import { useToast } from '@/components/ui/use-toast';
 import { Loader2 } from 'lucide-react';
 
+// Define the shape of the authentication context
 interface AuthContextType {
   isAuthenticated: boolean;
-  login: () => void;
-  logout: () => void;
+  authToken: string | null;
+  userEmail: string | null;
+  userPermissions: string[];
+  signIn: (email: string, token: string) => void;
+  signOut: () => void; // Keep signOut for internal clarity
+  logout: () => void; // Add logout as an alias for external use
+  hasPermission: (permission: string) => boolean;
 }
 
-const AuthContext = React.createContext<AuthContextType | undefined>(undefined);
+// Create the AuthContext
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+// Custom hook to use the AuthContext
 export const useAuth = () => {
-  const context = React.useContext(AuthContext);
-  if (!context) {
+  const context = useContext(AuthContext);
+  if (context === undefined) {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;
 };
 
+// AuthProvider component
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(
-    localStorage.getItem('isAuthenticated') === 'true'
-  );
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+  const [authToken, setAuthToken] = useState<string | null>(null);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [userPermissions, setUserPermissions] = useState<string[]>([]);
+  const { toast } = useToast();
 
-  const login = () => {
+  useEffect(() => {
+    // On mount, try to load auth state from localStorage
+    const storedToken = localStorage.getItem('token');
+    const storedEmail = localStorage.getItem('userEmail');
+    const storedPermissions = localStorage.getItem('userPermissions');
+
+    if (storedToken && storedEmail) {
+      setIsAuthenticated(true);
+      setAuthToken(storedToken);
+      setUserEmail(storedEmail);
+      try {
+        setUserPermissions(storedPermissions ? JSON.parse(storedPermissions) : []);
+      } catch (e) {
+        console.error('Failed to parse stored permissions:', e);
+        setUserPermissions([]);
+      }
+    }
+  }, []);
+
+  const signIn = (email: string, token: string) => {
+    localStorage.setItem('token', token);
+    localStorage.setItem('userEmail', email);
+
+    // --- Simulate assigning permissions based on email for demonstration ---
+    // In a real app, you would fetch these from your backend after login.
+    let permissions: string[] = [];
+    if (email === 'admin@example.com') {
+      permissions = ['create_product', 'delete_product', 'submit_sale', 'view_all_data'];
+    } else if (email === 'sales@example.com') {
+      permissions = ['submit_sale', 'view_all_data'];
+    } else if (email === 'inventory@example.com') {
+      permissions = ['create_product', 'view_all_data'];
+    } else {
+      permissions = ['view_all_data']; // Default permissions for other users
+    }
+    localStorage.setItem('userPermissions', JSON.stringify(permissions));
+    // --- End simulation ---
+
     setIsAuthenticated(true);
-    localStorage.setItem('isAuthenticated', 'true');
+    setAuthToken(token);
+    setUserEmail(email);
+    setUserPermissions(permissions);
+
+    toast({
+      title: 'Login Successful',
+      description: `Welcome, ${email}!`,
+      variant: 'default',
+    });
   };
 
-  const logout = () => {
-    setIsAuthenticated(false);
-    localStorage.removeItem('isAuthenticated');
+  const internalSignOut = () => { // Renamed to avoid conflict with exposed signOut
     localStorage.removeItem('token');
+    localStorage.removeItem('userEmail');
+    localStorage.removeItem('userPermissions');
+    setIsAuthenticated(false);
+    setAuthToken(null);
+    setUserEmail(null);
+    setUserPermissions([]);
+    toast({
+      title: 'Logged Out',
+      description: 'You have been successfully logged out.',
+      variant: 'default',
+    });
   };
+
+  // Expose logout as an alias for internalSignOut
+  const logout = internalSignOut;
+
+  const hasPermission = useCallback((permission: string) => {
+    return userPermissions.includes(permission);
+  }, [userPermissions]);
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated, login, logout }}>
+    <AuthContext.Provider
+      value={{
+        isAuthenticated,
+        authToken,
+        userEmail,
+        userPermissions,
+        signIn,
+        signOut: internalSignOut, // Map signOut to internalSignOut
+        logout, // Expose logout
+        hasPermission,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );
@@ -61,7 +144,7 @@ export function AuthPage() {
 
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { login } = useAuth();
+  const { signIn } = useAuth(); // Still use signIn from the context
 
   const toggleMode = () => {
     setMode(mode === 'login' ? 'register' : 'login');
@@ -92,17 +175,13 @@ export function AuthPage() {
 
       if (res.ok) {
         if (mode === 'login') {
-          localStorage.setItem('token', data.token);
-          login();
-          toast({
-            title: '✅ Login Successful',
-            description: 'Welcome back!',
-          });
+          signIn(email, data.token);
           navigate('/');
         } else {
           toast({
             title: '✅ Registration Successful',
             description: 'You can now log in.',
+            variant: 'default',
           });
           setMode('login');
         }
