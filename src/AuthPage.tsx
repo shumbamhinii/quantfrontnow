@@ -74,8 +74,8 @@ export function AuthPage() {
     try {
       const endpoint =
         mode === 'login'
-          ? 'http://localhost:3000/login'
-          : 'http://localhost:3000/register';
+          ? 'https://quantnow.onrender.com/login'
+          : 'https://quantnow.onrender.com/register';
 
       const payload =
         mode === 'login'

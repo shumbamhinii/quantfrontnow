@@ -52,7 +52,7 @@ interface Asset {
   book_value: number; // Calculated
 }
 
-const API_BASE_URL = 'http://localhost:3000'; // Your backend URL
+const API_BASE_URL = 'https://quantnow.onrender.com'; // Your backend URL
 
 const Financials = () => {
   const navigate = useNavigate();

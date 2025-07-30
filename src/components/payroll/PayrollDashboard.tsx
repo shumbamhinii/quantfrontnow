@@ -46,7 +46,7 @@ export interface Employee {
   bank_details: BankDetails; // Ensure this is parsed as an object from backend
 }
 
-const API_BASE_URL = 'http://localhost:3000'; // Define your API base URL
+const API_BASE_URL = 'https://quantnow.onrender.com'; // Define your API base URL
 
 const PayrollDashboard: React.FC = () => {
   const [employees, setEmployees] = useState<Employee[]>([]);

@@ -106,12 +106,12 @@ const DataAnalytics = () => {
         invoicesRes,
         customersRes,
       ] = await Promise.all([
-        fetch('http://localhost:3000/api/charts/revenue-trend', { headers }),
-        fetch('http://localhost:3000/api/charts/transaction-volume', { headers }),
-        fetch('http://localhost:3000/transactions', { headers }), // Fetch all transactions
-        fetch('http://localhost:3000/api/products', { headers }), // Using /api/products
-        fetch('http://localhost:3000/api/invoices', { headers }),
-        fetch('http://localhost:3000/api/customers', { headers }),
+        fetch('https://quantnow.onrender.com/api/charts/revenue-trend', { headers }),
+        fetch('https://quantnow.onrender.com/api/charts/transaction-volume', { headers }),
+        fetch('https://quantnow.onrender.com/transactions', { headers }), // Fetch all transactions
+        fetch('https://quantnow.onrender.com/api/products', { headers }), // Using /api/products
+        fetch('https://quantnow.onrender.com/api/invoices', { headers }),
+        fetch('https://quantnow.onrender.com/api/customers', { headers }),
       ]);
 
       // Check all responses for success

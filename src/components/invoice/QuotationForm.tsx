@@ -16,7 +16,7 @@ import { Plus, XCircle, Loader2, ChevronLeft } from 'lucide-react';
 import { useToast } from '@/components/ui/use-toast';
 
 // Define API Base URL
-const API_BASE_URL = 'http://localhost:3000';
+const API_BASE_URL = 'https://quantnow.onrender.com';
 
 // Re-defining interfaces based on your provided backend structure for Quotations
 interface QuotationLineItem {

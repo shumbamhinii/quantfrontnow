@@ -64,7 +64,7 @@ type CartItem = ProductDB & { quantity: number; subtotal: number };
 type PaymentType = 'Cash' | 'Bank' | 'Credit';
 // --- END: MODIFIED TYPES TO MATCH BACKEND API ---
 
-const API_BASE_URL = 'http://localhost:3000'; // IMPORTANT: Replace with your actual backend API URL
+const API_BASE_URL = 'https://quantnow.onrender.com'; // IMPORTANT: Replace with your actual backend API URL
 
 export default function POSScreen() {
   const [messageApi, contextHolder] = message.useMessage();
