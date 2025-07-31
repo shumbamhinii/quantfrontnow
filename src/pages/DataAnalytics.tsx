@@ -3,9 +3,9 @@ import { Header } from '@/components/layout/Header';
 import { ChartGrid } from '@/components/analytics/ChartGrid';
 import { ChartModal } from '@/components/analytics/ChartModal';
 import { motion } from 'framer-motion';
-import { useAuth } from '../AuthPage'; // Import useAuth
-import Highcharts from 'highcharts'; // Import Highcharts for direct config
-import { Spin, Alert, Button } from 'antd'; // Import Spin, Alert, Button from antd for better UI feedback
+import { useAuth } from '../AuthPage';
+import Highcharts from 'highcharts';
+import { Spin, Alert, Button } from 'antd';
 
 // Define a type for the transaction data expected from the backend
 interface Transaction {
@@ -20,7 +20,7 @@ interface Transaction {
   user_id?: string;
   branch?: string;
   created_at: string;
-  cart?: Array<{ id: string; quantity: number }>; // Assuming cart structure for sales
+  cart?: Array<{ id: string; quantity: number }>;
 }
 
 // Define a type for Product/Service data from backend
@@ -28,13 +28,13 @@ interface ProductService {
   id: string;
   name: string;
   description?: string;
-  unitPrice: number; // Frontend uses unitPrice
-  price: number; // For consistency
+  unitPrice: number;
+  price: number;
   purchasePrice?: number;
   unitPurchasePrice?: number;
   sku?: string;
   isService: boolean;
-  qty: number; // Frontend uses qty for stock
+  qty: number;
   stockQuantity: number;
   unit?: string;
   minQty?: number;
@@ -44,7 +44,7 @@ interface ProductService {
   createdAt: string;
   updatedAt: string;
   companyName: string;
-  category?: string; // Added category
+  category?: string;
 }
 
 // Define a type for Customer data from backend
@@ -55,16 +55,16 @@ interface Customer {
   phone?: string;
   address?: string;
   tax_id?: string;
-  total_invoiced: number; // Total amount invoiced to this customer
-  created_at: string; // Customer creation date
+  total_invoiced: number;
+  created_at: string;
 }
 
 export interface ChartData {
   id: string;
   title: string;
   type: 'line' | 'bar' | 'pie' | 'area' | 'column';
-  data: (string | number)[][]; // Keep for generic data structure if needed, though Highcharts often uses series directly
-  config: Highcharts.Options; // Use Highcharts.Options for type safety
+  data: (string | number)[][];
+  config: Highcharts.Options;
   isLoading: boolean;
   error: string | null;
 }
@@ -76,9 +76,8 @@ const DataAnalytics = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const { isAuthenticated } = useAuth(); // Get authentication status
-  // Get token directly from localStorage using 'access_token' for consistency
-  const token = localStorage.getItem('token'); 
+  const { isAuthenticated } = useAuth();
+  const token = localStorage.getItem('token');
 
   const fetchChartData = useCallback(async () => {
     if (!token) {
@@ -94,45 +93,29 @@ const DataAnalytics = () => {
     try {
       const headers = {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`, // Include the JWT token
+        'Authorization': `Bearer ${token}`,
       };
 
-      // Fetch all necessary data concurrently
+      // Fetch only the two dynamic charts concurrently
       const [
         revenueTrendRes,
         transactionVolumeRes,
-        allTransactionsRes, // New fetch for all transactions
-        productsServicesRes,
-        invoicesRes,
-        customersRes,
       ] = await Promise.all([
         fetch('https://quantnow.onrender.com/api/charts/revenue-trend', { headers }),
         fetch('https://quantnow.onrender.com/api/charts/transaction-volume', { headers }),
-        fetch('https://quantnow.onrender.com/transactions', { headers }), // Fetch all transactions
-        fetch('https://quantnow.onrender.com/api/products', { headers }), // Using /api/products
-        fetch('https://quantnow.onrender.com/api/invoices', { headers }),
-        fetch('https://quantnow.onrender.com/api/customers', { headers }),
       ]);
 
       // Check all responses for success
       if (!revenueTrendRes.ok) throw new Error('Failed to fetch revenue trend data');
       if (!transactionVolumeRes.ok) throw new Error('Failed to fetch transaction volume data');
-      if (!allTransactionsRes.ok) throw new Error('Failed to fetch all transactions data');
-      if (!productsServicesRes.ok) throw new Error('Failed to fetch products/services data');
-      if (!invoicesRes.ok) throw new Error('Failed to fetch invoices data');
-      if (!customersRes.ok) throw new Error('Failed to fetch customers data');
 
       // Parse all JSON data
       const revenueTrendData = await revenueTrendRes.json();
       const transactionVolumeData = await transactionVolumeRes.json();
-      const allTransactions: Transaction[] = await allTransactionsRes.json();
-      const productsServicesData: ProductService[] = await productsServicesRes.json();
-      const invoicesData = await invoicesRes.json();
-      const customersData: Customer[] = await customersRes.json();
 
       const charts: ChartData[] = [];
 
-      // 1. Revenue, Expenses, and Profit Trend (Existing)
+      // 1. Revenue, Expenses, and Profit Trend (Dynamic - Fetched from API)
       const revenueCategories = revenueTrendData.map((d: any) => d.month);
       const revenueSeriesData = revenueTrendData.map((d: any) => d.revenue);
       const expensesSeriesData = revenueTrendData.map((d: any) => d.expenses);
@@ -158,7 +141,7 @@ const DataAnalytics = () => {
         error: null,
       });
 
-      // 2. Transaction Volume (Existing)
+      // 2. Transaction Volume (Dynamic - Fetched from API)
       const transactionCategories = transactionVolumeData.map((d: any) => d.month);
       const quotesSeriesData = transactionVolumeData.map((d: any) => d.quotes);
       const invoicesSeriesData = transactionVolumeData.map((d: any) => d.invoices);
@@ -184,72 +167,42 @@ const DataAnalytics = () => {
         error: null,
       });
 
-      // 3. Expenses by Category (Pie Chart)
-      const expenseCategoryMap: { [key: string]: number } = {};
-      allTransactions.filter(t => t.type === 'expense').forEach((expense: Transaction) => {
-        const category = expense.category || 'Uncategorized';
-        expenseCategoryMap[category] = (expenseCategoryMap[category] || 0) + expense.amount;
-      });
+      // --- All charts from here onwards are hardcoded as requested ---
 
-      const expenseSeries = Object.entries(expenseCategoryMap).map(([name, y]) => ({ name, y }));
+      // 3. Expenses by Category (Pie Chart) - Hardcoded
+      const expenseCategorySeries = [
+        { name: 'Payroll', y: 30000 },
+        { name: 'Rent', y: 12000 },
+        { name: 'Utilities', y: 5500 },
+        { name: 'Supplies', y: 8000 },
+        { name: 'Marketing', y: 4500 },
+        { name: 'Maintenance', y: 3000 },
+      ];
 
-      charts.push({
-        id: 'expenses-by-category',
-        title: 'Expenses by Category',
-        type: 'pie',
-        data: [],
-        config: {
-          chart: { type: 'pie' },
-          title: { text: 'Expense Distribution' },
-          series: [{
-            name: 'Expenses',
-            data: expenseSeries,
-            type: 'pie',
-            innerSize: '50%',
-            dataLabels: {
-              enabled: true,
-              format: '<b>{point.name}</b>: {point.percentage:.1f} %'
-            }
-          }],
-        },
-        isLoading: false,
-        error: null,
-      });
 
-      // 4. Top N Selling Products/Services (Bar Chart)
-      const productSalesMap: { [productId: string]: number } = {};
-      allTransactions.filter(t => t.type === 'sale' && t.cart).forEach(sale => {
-        sale.cart?.forEach(item => {
-          productSalesMap[item.id] = (productSalesMap[item.id] || 0) + item.quantity;
-        });
-      });
 
-      // Map product IDs to names and sort
-      const topN = 10;
-      const sortedProductSales = Object.entries(productSalesMap)
-        .map(([productId, totalQuantity]) => {
-          const product = productsServicesData.find(p => p.id === productId);
-          return {
-            name: product ? product.name : `Unknown Product (${productId})`,
-            y: totalQuantity,
-          };
-        })
-        .sort((a, b) => b.y - a.y)
-        .slice(0, topN);
+      // 4. Top N Selling Products/Services (Bar Chart) - Hardcoded
+      const topSellingProductsData = [
+        { name: 'Product A', y: 1500 },
+        { name: 'Service B', y: 1250 },
+        { name: 'Product C', y: 980 },
+        { name: 'Service D', y: 750 },
+        { name: 'Product E', y: 620 },
+      ];
 
       charts.push({
         id: 'top-selling-products',
-        title: `Top ${topN} Selling Products/Services`,
+        title: `Top 5 Selling Products/Services`,
         type: 'bar',
         data: [],
         config: {
           chart: { type: 'bar' },
-          title: { text: `Top ${topN} Selling Products/Services by Quantity` },
-          xAxis: { categories: sortedProductSales.map(item => item.name), title: { text: 'Product/Service' } },
+          title: { text: `Top 5 Selling Products/Services by Quantity` },
+          xAxis: { categories: topSellingProductsData.map(item => item.name), title: { text: 'Product/Service' } },
           yAxis: { title: { text: 'Quantity Sold' } },
           series: [{
             name: 'Quantity Sold',
-            data: sortedProductSales.map(item => item.y),
+            data: topSellingProductsData.map(item => item.y),
             type: 'bar',
           }],
           legend: { enabled: false },
@@ -258,56 +211,22 @@ const DataAnalytics = () => {
         error: null,
       });
 
-      // 5. Customer Lifetime Value Distribution (Pie Chart)
-      const customerValueTiers: { [tier: string]: number } = {
-        'Low Value (<R1000)': 0,
-        'Medium Value (R1000-R5000)': 0,
-        'High Value (>R5000)': 0,
-      };
+      // 5. Customer Lifetime Value Distribution (Pie Chart) - Hardcoded
+      const customerValueSeries = [
+        { name: 'Low Value (<R1000)', y: 45 },
+        { name: 'Medium Value (R1000-R5000)', y: 30 },
+        { name: 'High Value (>R5000)', y: 25 },
+      ];
 
-      customersData.forEach(customer => {
-        const totalInvoiced = customer.total_invoiced || 0;
-        if (totalInvoiced < 1000) {
-          customerValueTiers['Low Value (<R1000)']++;
-        } else if (totalInvoiced >= 1000 && totalInvoiced <= 5000) {
-          customerValueTiers['Medium Value (R1000-R5000)']++;
-        } else {
-          customerValueTiers['High Value (>R5000)']++;
-        }
-      });
 
-      const customerValueSeries = Object.entries(customerValueTiers).map(([name, y]) => ({ name, y }));
 
-      charts.push({
-        id: 'customer-lifetime-value',
-        title: 'Customer Lifetime Value Distribution',
-        type: 'pie',
-        data: [],
-        config: {
-          chart: { type: 'pie' },
-          title: { text: 'Customer Value Tiers' },
-          series: [{
-            name: 'Customers',
-            data: customerValueSeries,
-            type: 'pie',
-            innerSize: '50%',
-            dataLabels: {
-              enabled: true,
-              format: '<b>{point.name}</b>: {point.percentage:.1f} %'
-            }
-          }],
-        },
-        isLoading: false,
-        error: null,
-      });
-
-      // 6. Product Stock Levels vs. Thresholds (Column Chart with plot lines)
-      const productsWithStock = productsServicesData.filter(p => !p.isService && p.qty !== undefined && p.minQty !== undefined && p.maxQty !== undefined);
-
-      const stockCategories = productsWithStock.map(p => p.name);
-      const currentStockData = productsWithStock.map(p => p.qty);
-      const minStockData = productsWithStock.map(p => p.minQty);
-      const maxStockData = productsWithStock.map(p => p.maxQty);
+      // 6. Product Stock Levels vs. Thresholds (Column Chart with plot lines) - Hardcoded
+      const hardcodedProductsWithStock = [
+        { name: 'Item 1', current: 150, min: 50, max: 200 },
+        { name: 'Item 2', current: 30, min: 20, max: 50 },
+        { name: 'Item 3', current: 210, min: 100, max: 250 },
+        { name: 'Item 4', current: 80, min: 70, max: 120 },
+      ];
 
       charts.push({
         id: 'product-stock-levels',
@@ -317,35 +236,31 @@ const DataAnalytics = () => {
         config: {
           chart: { type: 'column' },
           title: { text: 'Current Stock vs. Min/Max Thresholds' },
-          xAxis: { categories: stockCategories, title: { text: 'Product' } },
+          xAxis: { categories: hardcodedProductsWithStock.map(p => p.name), title: { text: 'Product' } },
           yAxis: { title: { text: 'Quantity' } },
           series: [
-            { name: 'Current Stock', data: currentStockData, type: 'column' },
-            { name: 'Minimum Stock', data: minStockData, type: 'line', dashStyle: 'Dot', marker: { enabled: false } },
-            { name: 'Maximum Stock', data: maxStockData, type: 'line', dashStyle: 'Dot', marker: { enabled: false } },
+            { name: 'Current Stock', data: hardcodedProductsWithStock.map(p => p.current), type: 'column' },
+            { name: 'Minimum Stock', data: hardcodedProductsWithStock.map(p => p.min), type: 'line', dashStyle: 'Dot', marker: { enabled: false } },
+            { name: 'Maximum Stock', data: hardcodedProductsWithStock.map(p => p.max), type: 'line', dashStyle: 'Dot', marker: { enabled: false } },
           ],
         },
         isLoading: false,
         error: null,
       });
 
-      // 7. Monthly Transaction Types Breakdown (Stacked Column Chart)
-      const monthlyTransactionData: { [month: string]: { [type: string]: number } } = {};
+      // 7. Monthly Transaction Types Breakdown (Stacked Column Chart) - Hardcoded
+      const hardcodedMonthlyTransactionData = {
+        '2023-11': { sale: 80000, income: 5000, expense: 20000, cash_in: 3000 },
+        '2023-12': { sale: 95000, income: 8000, expense: 25000, cash_in: 4000 },
+        '2024-01': { sale: 110000, income: 6500, expense: 22000, cash_in: 5000 },
+        '2024-02': { sale: 120000, income: 7000, expense: 24000, cash_in: 6000 },
+      };
 
-      allTransactions.forEach(transaction => {
-        const date = new Date(transaction.created_at);
-        const monthYear = `${date.getFullYear()}-${(date.getMonth() + 1).toString().padStart(2, '0')}`;
-        if (!monthlyTransactionData[monthYear]) {
-          monthlyTransactionData[monthYear] = { 'sale': 0, 'cash_in': 0, 'expense': 0, 'income': 0 };
-        }
-        monthlyTransactionData[monthYear][transaction.type] = (monthlyTransactionData[monthYear][transaction.type] || 0) + transaction.amount;
-      });
-
-      const sortedMonths = Object.keys(monthlyTransactionData).sort();
-      const salesData = sortedMonths.map(month => monthlyTransactionData[month]['sale'] || 0);
-      const cashInData = sortedMonths.map(month => monthlyTransactionData[month]['cash_in'] || 0);
-      const expenseData = sortedMonths.map(month => monthlyTransactionData[month]['expense'] || 0);
-      const incomeData = sortedMonths.map(month => monthlyTransactionData[month]['income'] || 0);
+      const sortedMonths = Object.keys(hardcodedMonthlyTransactionData).sort();
+      const salesData = sortedMonths.map(month => hardcodedMonthlyTransactionData[month]['sale'] || 0);
+      const cashInData = sortedMonths.map(month => hardcodedMonthlyTransactionData[month]['cash_in'] || 0);
+      const expenseData = sortedMonths.map(month => hardcodedMonthlyTransactionData[month]['expense'] || 0);
+      const incomeData = sortedMonths.map(month => hardcodedMonthlyTransactionData[month]['income'] || 0);
 
       charts.push({
         id: 'monthly-transaction-breakdown',
@@ -362,7 +277,7 @@ const DataAnalytics = () => {
               stacking: 'normal',
               dataLabels: {
                 enabled: true,
-                format: 'R{point.y:.2f}' // Format data labels
+                format: 'R{point.y:,.0f}',
               }
             }
           },
@@ -377,6 +292,41 @@ const DataAnalytics = () => {
         error: null,
       });
 
+      // 8. Customer Retention Rate (Line Chart) - Hardcoded
+      const customerRetentionData = [
+        { month: 'Nov 23', retention: 95 },
+        { month: 'Dec 23', retention: 92 },
+        { month: 'Jan 24', retention: 94 },
+        { month: 'Feb 24', retention: 96 },
+        { month: 'Mar 24', retention: 91 },
+      ];
+
+      charts.push({
+        id: 'customer-retention-rate',
+        title: 'Customer Retention Rate',
+        type: 'line',
+        data: [],
+        config: {
+          chart: { type: 'line' },
+          title: { text: 'Customer Retention Rate Over Time' },
+          xAxis: { categories: customerRetentionData.map(d => d.month), title: { text: 'Month' } },
+          yAxis: { 
+            title: { text: 'Retention Rate (%)' },
+            min: 80, // Set a minimum value for better visualization
+            max: 100,
+          },
+          series: [{
+            name: 'Retention Rate',
+            data: customerRetentionData.map(d => d.retention),
+            type: 'line',
+          }],
+          tooltip: {
+            pointFormat: '{series.name}: <b>{point.y}%</b>'
+          },
+        },
+        isLoading: false,
+        error: null,
+      });
 
       setAllChartData(charts);
     } catch (err: any) {
@@ -385,19 +335,17 @@ const DataAnalytics = () => {
     } finally {
       setLoading(false);
     }
-  }, [token]); // Dependency array updated to use 'token' from localStorage
+  }, [token]);
 
   useEffect(() => {
-    // Only fetch data if authenticated and token is available
     if (isAuthenticated && token) {
       fetchChartData();
     } else {
-      // If not authenticated or token is missing, clear data and show message
       setAllChartData([]);
       setLoading(false);
-      setError('Please log in to view analytics.'); 
+      setError('Please log in to view analytics.');
     }
-  }, [fetchChartData, isAuthenticated, token]); // Dependencies updated to reflect changes
+  }, [fetchChartData, isAuthenticated, token]);
 
   const handleExpandChart = (chart: ChartData) => {
     setSelectedChart(chart);

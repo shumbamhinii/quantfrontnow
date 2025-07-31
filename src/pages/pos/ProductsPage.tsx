@@ -19,9 +19,9 @@ import {
   Spin,
 } from 'antd';
 import { useMediaQuery } from 'react-responsive';
-import POSDashboard from '../../pages/POSDashboard'; // Corrected path if needed
-import type { Product } from '../../types/type'; // Assuming these types are defined in your types file
-import { useAuth } from '../../AuthPage'; // Import useAuth for isAuthenticated state
+import POSDashboard from '../../pages/POSDashboard';
+import type { Product } from '../../types/type';
+import { useAuth } from '../../AuthPage';
 
 // Explicitly import each icon to resolve potential bundling issues
 import PlusOutlined from '@ant-design/icons/lib/icons/PlusOutlined';
@@ -74,6 +74,7 @@ const HARDCODED_PRODUCTS: Product[] = [
   {
     id: 'prod3',
     name: 'Ergonomic Chair',
+
     type: 'product',
     price: 3500.00,
     unitPrice: 3500.00,
@@ -85,6 +86,24 @@ const HARDCODED_PRODUCTS: Product[] = [
     unit: 'units',
     companyName: 'Ngenge Stores',
   },
+  {
+    id: 'serv2',
+    name: 'Website Development',
+    type: 'service',
+    price: 25000.00,
+    unitPrice: 25000.00,
+    availableValue: 5, // Another hardcoded service
+    companyName: 'Ngenge Stores',
+  },
+  {
+    id: 'serv3',
+    name: 'IT Support (Monthly)',
+    type: 'service',
+    price: 1500.00,
+    unitPrice: 1500.00,
+    availableValue: 20, // Another hardcoded service
+    companyName: 'Ngenge Stores',
+  }
 ];
 
 const HARDCODED_SALES_DATA: any[] = [ // Simplified sales data for bestsellers calculation
@@ -295,7 +314,7 @@ const ProductsPage = () => {
     setLoading(true);
     const timer = setTimeout(() => {
       const isNew = !editingProduct;
-      const newId = isNew ? `prod${products.length + 1}` : editingProduct!.id;
+      const newId = isNew ? `${values.type === 'product' ? 'prod' : 'serv'}${products.length + 1}` : editingProduct!.id;
 
       const newProduct: Product = {
         id: newId,
@@ -336,6 +355,93 @@ const ProductsPage = () => {
   const filteredProducts = sortedProducts.filter(p =>
     p.name?.toLowerCase().includes(search.toLowerCase())
   );
+  
+  const productColumns = [
+    { title: 'Name', dataIndex: 'name', key: 'name' },
+    { title: 'Type', dataIndex: 'type', key: 'type' },
+    {
+      title: 'Quantity',
+      dataIndex: 'qty',
+      key: 'qty',
+      render: (qty, rec) => rec.unit ? `${qty ?? 0} ${rec.unit}` : qty ?? 0,
+    },
+    {
+      title: 'Price',
+      dataIndex: 'price',
+      key: 'price',
+      render: (_, r) => `R${r.unitPrice ?? r.price ?? 0}`,
+    },
+    {
+      title: 'Unit Purchase Price',
+      dataIndex: 'unitPurchasePrice',
+      key: 'unitPurchasePrice',
+      render: val => (val ? `R${val}` : '-'),
+    },
+    {
+      title: 'Actions',
+      key: 'actions',
+      render: (_, record) => (
+        <Space>
+          <Button onClick={() => openRestockModal(record)} disabled={!isUserAuthenticated}>
+            Restock
+          </Button>
+          <Button
+            icon={<EditOutlined />}
+            onClick={() => openForm(record)}
+            disabled={!isUserAuthenticated}
+          />
+          <Popconfirm
+            title='Delete product?'
+            onConfirm={() => handleDelete(record.id)}
+            okText='Yes'
+            cancelText='No'
+            disabled={!isUserAuthenticated}
+          >
+            <Button icon={<DeleteOutlined />} danger disabled={!isUserAuthenticated} />
+          </Popconfirm>
+        </Space>
+      ),
+    },
+  ];
+
+  const serviceColumns = [
+    { title: 'Name', dataIndex: 'name', key: 'name' },
+    { title: 'Type', dataIndex: 'type', key: 'type' },
+    {
+      title: 'Price',
+      dataIndex: 'price',
+      key: 'price',
+      render: (_, r) => `R${r.unitPrice ?? r.price ?? 0}`,
+    },
+    {
+      title: 'Available Value',
+      dataIndex: 'availableValue',
+      key: 'availableValue',
+      render: val => (val ? `${val} hours` : '-'),
+    },
+    {
+      title: 'Actions',
+      key: 'actions',
+      render: (_, record) => (
+        <Space>
+          <Button
+            icon={<EditOutlined />}
+            onClick={() => openForm(record)}
+            disabled={!isUserAuthenticated}
+          />
+          <Popconfirm
+            title='Delete service?'
+            onConfirm={() => handleDelete(record.id)}
+            okText='Yes'
+            cancelText='No'
+            disabled={!isUserAuthenticated}
+          >
+            <Button icon={<DeleteOutlined />} danger disabled={!isUserAuthenticated} />
+          </Popconfirm>
+        </Space>
+      ),
+    },
+  ];
 
   const renderForm = () => (
     <Form
@@ -438,8 +544,8 @@ const ProductsPage = () => {
       {formType === 'service' && (
         <Form.Item
           name='availableValue'
-          label='Available Value'
-          rules={[{ required: false }]}
+          label='Available Value (e.g., hours, licenses)'
+          rules={[{ required: true, message: 'Please enter available value' }]}
         >
           <InputNumber min={0} style={{ width: '100%' }} />
         </Form.Item>
@@ -472,7 +578,7 @@ const ProductsPage = () => {
                   onClick={() => openForm(null)}
                   disabled={!isUserAuthenticated}
                 >
-                  Add Product
+                  Add Item
                 </Button>
                 <Button
                   icon={<UploadOutlined />}
@@ -501,7 +607,7 @@ const ProductsPage = () => {
             ) : (
               isMobile ? (
                 <Space direction='vertical' style={{ width: '100%' }}>
-                  {filteredProducts.map(product => (
+                  {filteredProducts.filter(p => p.type === 'product').map(product => (
                     <Card
                       key={product.id}
                       title={product.name}
@@ -546,44 +652,64 @@ const ProductsPage = () => {
                 </Space>
               ) : (
                 <Table<Product>
-                  columns={[
-                    { title: 'Name', dataIndex: 'name', key: 'name' },
-                    { title: 'Type', dataIndex: 'type', key: 'type' },
-                    {
-                      title: 'Quantity',
-                      dataIndex: 'qty',
-                      key: 'qty',
-                      render: (qty, rec) =>
-                        rec.unit ? `${qty ?? 0} ${rec.unit}` : qty ?? 0,
-                    },
-                    {
-                      title: 'Price',
-                      dataIndex: 'price',
-                      key: 'price',
-                      render: (_, r) => `R${r.unitPrice ?? r.price ?? 0}`,
-                    },
-                    {
-                      title: 'Unit Purchase Price',
-                      dataIndex: 'unitPurchasePrice',
-                      key: 'unitPurchasePrice',
-                      render: val => (val ? `R${val}` : '-'),
-                    },
-                    {
-                      title: 'Actions',
-                      key: 'actions',
-                      render: (_, record) => (
+                  columns={productColumns}
+                  dataSource={filteredProducts.filter(p => p.type === 'product')}
+                  rowKey='id'
+                  loading={loading}
+                  pagination={{ pageSize: 6 }}
+                  scroll={{ x: true }}
+                />
+              )
+            )}
+          </Tabs.TabPane>
+          <Tabs.TabPane tab='Services List' key='services'>
+            <div className='flex flex-col sm:flex-row sm:justify-between items-start sm:items-center mb-4'>
+              <h2 className='text-xl font-semibold mb-2 sm:mb-0'>Services</h2>
+              <div className={isMobile ? 'flex flex-col gap-2 w-full' : 'flex gap-2'}>
+                <Button
+                  type='primary'
+                  icon={<PlusOutlined />}
+                  block={isMobile}
+                  onClick={() => openForm(null)}
+                  disabled={!isUserAuthenticated}
+                >
+                  Add Item
+                </Button>
+              </div>
+            </div>
+
+            <Input.Search
+              placeholder='Search services by name'
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className='mb-4'
+              allowClear
+              disabled={!isUserAuthenticated}
+            />
+
+            {loading ? (
+              <div style={{ textAlign: 'center', marginTop: 50 }}>
+                <Spin size="large" tip="Loading services..." />
+              </div>
+            ) : (
+              isMobile ? (
+                <Space direction='vertical' style={{ width: '100%' }}>
+                  {filteredProducts.filter(p => p.type === 'service').map(service => (
+                    <Card
+                      key={service.id}
+                      title={service.name}
+                      size='small'
+                      styles={{ body: { padding: 16 } }}
+                      extra={
                         <Space>
-                          <Button onClick={() => openRestockModal(record)} disabled={!isUserAuthenticated}>
-                            Restock
-                          </Button>
                           <Button
                             icon={<EditOutlined />}
-                            onClick={() => openForm(record)}
+                            onClick={() => openForm(service)}
                             disabled={!isUserAuthenticated}
                           />
                           <Popconfirm
-                            title='Delete product?'
-                            onConfirm={() => handleDelete(record.id)}
+                            title='Delete service?'
+                            onConfirm={() => handleDelete(service.id)}
                             okText='Yes'
                             cancelText='No'
                             disabled={!isUserAuthenticated}
@@ -591,10 +717,21 @@ const ProductsPage = () => {
                             <Button icon={<DeleteOutlined />} danger disabled={!isUserAuthenticated} />
                           </Popconfirm>
                         </Space>
-                      ),
-                    },
-                  ]}
-                  dataSource={filteredProducts}
+                      }
+                    >
+                      <p>Type: {service.type}</p>
+                      <p>Price: R{service.price || service.unitPrice}</p>
+                      <p>
+                        <strong>Available Value:</strong>{' '}
+                        {service.availableValue ? `${service.availableValue} hours` : '-'}
+                      </p>
+                    </Card>
+                  ))}
+                </Space>
+              ) : (
+                <Table<Product>
+                  columns={serviceColumns}
+                  dataSource={filteredProducts.filter(p => p.type === 'service')}
                   rowKey='id'
                   loading={loading}
                   pagination={{ pageSize: 6 }}
