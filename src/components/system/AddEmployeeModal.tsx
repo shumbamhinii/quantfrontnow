@@ -1,29 +1,28 @@
 import React, { useState } from 'react';
-import { Button } from 'antd'; // Assuming Ant Design Button is still desired for trigger
-import { UserAddOutlined } from '@ant-design/icons'; // Assuming Ant Design icon is still desired
+import { Button } from 'antd';
+import { UserAddOutlined } from '@ant-design/icons';
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-} from '../../components/ui/dialog'; // Assuming shadcn/ui Dialog components
+} from '../../components/ui/dialog';
 
-// Import the new EmployeeRegistration component
+// ✅ Import the EmployeeRegistration form
 import EmployeeRegistration from './EmployeeRegistration';
 
-// Define props for this wrapper component
 interface AddEmployeeModalProps {
-  onEmployeeActionSuccess: () => Promise<void>; // Callback to refresh employee list in parent (PayrollDashboard)
+  onEmployeeActionSuccess: () => Promise<void>; // Used to refresh employee list in PayrollDashboard
 }
 
 const AddEmployeeModal: React.FC<AddEmployeeModalProps> = ({ onEmployeeActionSuccess }) => {
   const [isOpen, setIsOpen] = useState(false);
 
-  // This function will be called by EmployeeRegistration upon successful submission
+  // Called when employee is added or edited successfully
   const handleRegistrationSuccess = async () => {
     setIsOpen(false); // Close the modal
-    await onEmployeeActionSuccess(); // Trigger parent to re-fetch employees
+    await onEmployeeActionSuccess(); // Refresh the employee list in parent
   };
 
   return (
@@ -45,10 +44,12 @@ const AddEmployeeModal: React.FC<AddEmployeeModalProps> = ({ onEmployeeActionSuc
             Add New Employee
           </DialogTitle>
         </DialogHeader>
-        {/* Render the EmployeeRegistration form inside the dialog */}
+
+        {/* ✅ Pass isOpen prop (required by EmployeeRegistration) */}
         <EmployeeRegistration
-          onClose={() => setIsOpen(false)} // Pass a close handler to the form
-          onSuccess={handleRegistrationSuccess} // Pass the success handler to the form
+          isOpen={isOpen}
+          onClose={() => setIsOpen(false)}
+          onSuccess={handleRegistrationSuccess}
         />
       </DialogContent>
     </Dialog>

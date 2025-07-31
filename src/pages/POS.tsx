@@ -74,7 +74,7 @@ type CartItem = (ProductDB | {
 type PaymentType = 'Cash' | 'Bank' | 'Credit';
 // --- END: MODIFIED TYPES TO MATCH BACKEND API ---
 
-const API_BASE_URL = 'https://quantnow.onrender.com'; // IMPORTANT: Replace with your actual backend API URL
+const API_BASE_URL = 'http://localhost:3000'; // IMPORTANT: Replace with your actual backend API URL
 
 // Define fixed VAT rate options (same as QuotationForm)
 const VAT_OPTIONS = [
@@ -359,15 +359,20 @@ export default function POSScreen() {
     setIsLoading(true); // Set loading true
     try {
       const salePayload = {
-        cart: cart.map(item => ({
-          id: typeof item.id === 'number' ? item.id : null, // Send null for custom item IDs to backend
-          name: item.name,
-          quantity: item.quantity,
-          unit_price: item.unit_price,
-          subtotal: item.subtotal,
-          is_service: (item as any).is_service || false, // Ensure is_service is passed for custom items
-          tax_rate_value: (item as any).tax_rate_value ?? 0, // Ensure tax_rate_value is passed
-        })),
+cart: cart.map(item => {
+  const isRealProduct = typeof item.id === 'number';
+
+  return {
+    ...(isRealProduct ? { id: item.id } : {}), // ✅ only include ID if it's a number
+    name: item.name,
+    quantity: item.quantity,
+    unit_price: item.unit_price,
+    subtotal: item.subtotal,
+    is_service: item.is_service || false,
+    tax_rate_value: item.tax_rate_value ?? 0,
+  };
+}),
+
         paymentType,
         total,
         customer: selectedCustomer

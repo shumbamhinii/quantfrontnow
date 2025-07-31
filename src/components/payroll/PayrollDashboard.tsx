@@ -20,31 +20,10 @@ import TimeTracking from './TimeTracking';
 import { Header } from '../layout/Header';
 import { Loader2 } from 'lucide-react';
 import { useAuth } from '../../AuthPage';
+import type { Employee } from '../../types/payroll'; // Import Employee from the consolidated payroll types file
+ // Import Employee from the consolidated payroll types file
 
 const { Title } = Typography;
-
-// Define Employee type to match backend API response
-interface BankDetails {
-  account_holder: string;
-  bank_name: string;
-  account_number: string;
-  branch_code: string;
-}
-
-export interface Employee {
-  id: string; // Changed to string (UUID)
-  name: string;
-  position: string | null;
-  email: string;
-  id_number: string; // Matches backend id_number
-  phone: string | null;
-  start_date: string; // Date string
-  payment_type: 'hourly' | 'salary';
-  base_salary: number | null; // For salaried employees
-  hourly_rate: number | null; // For hourly employees
-  hours_worked_total: number; // Sum of hours from time_entries, fetched from backend
-  bank_details: BankDetails; // Ensure this is parsed as an object from backend
-}
 
 const API_BASE_URL = 'https://quantnow.onrender.com'; // Define your API base URL
 
@@ -56,7 +35,7 @@ const PayrollDashboard: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated } = useAuth(); // Removed hasPermission
   const token = localStorage.getItem('token');
 
   const getAuthHeaders = useCallback(() => {
@@ -65,8 +44,8 @@ const PayrollDashboard: React.FC = () => {
 
   // Function to fetch employees from the backend
   const fetchEmployees = useCallback(async () => {
-    if (!token) {
-      console.warn('No token found. User is not authenticated for employee data.');
+    if (!isAuthenticated || !token) { // Removed permission check
+      console.warn('User not authenticated for employee data.');
       setEmployees([]);
       setLoading(false);
       setError('Please log in to view payroll data.');
@@ -95,17 +74,17 @@ const PayrollDashboard: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [getAuthHeaders, token]);
+  }, [getAuthHeaders, isAuthenticated, token]); // Removed permission check from dependencies
 
   useEffect(() => {
-    if (isAuthenticated && token) {
+    if (isAuthenticated && token) { // Removed permission check
       fetchEmployees();
     } else {
       setEmployees([]);
       setLoading(false);
       setError('Please log in to view payroll data.');
     }
-  }, [fetchEmployees, isAuthenticated, token]);
+  }, [fetchEmployees, isAuthenticated, token]); // Removed permission check from dependencies
 
   const handleEmployeeActionSuccess = async () => {
     // This function will be called from EmployeeRegistration after successful API call
@@ -124,15 +103,17 @@ const PayrollDashboard: React.FC = () => {
   // Calculate dashboard statistics from fetched employees
   const totalEmployees = employees.length;
   const totalHours = employees.reduce((sum, emp) => {
-    return sum + (emp.hours_worked_total || 0);
+    // Use the new 'hoursWorked' field (camelCase)
+    return sum + (emp.hoursWorked || 0);
   }, 0);
 
   const totalPayroll = employees.reduce((sum, emp) => {
-    if (emp.payment_type === 'salary' && emp.base_salary) {
-      return sum + emp.base_salary;
+    // Use the new 'paymentType', 'baseSalary', 'hourlyRate', 'hoursWorked' fields (camelCase)
+    if (emp.paymentType === 'salary' && emp.baseSalary) {
+      return sum + emp.baseSalary;
     }
-    if (emp.payment_type === 'hourly' && emp.hourly_rate) {
-      return sum + (emp.hours_worked_total || 0) * emp.hourly_rate;
+    if (emp.paymentType === 'hourly' && emp.hourlyRate) {
+      return sum + (emp.hoursWorked || 0) * emp.hourlyRate;
     }
     return sum;
   }, 0);
@@ -169,6 +150,7 @@ const PayrollDashboard: React.FC = () => {
     );
   }
 
+  // Simplified error handling
   if (error) {
     return (
       <div className='flex flex-col items-center justify-center h-full text-red-600'>
@@ -249,7 +231,7 @@ const PayrollDashboard: React.FC = () => {
               <div className='flex justify-between items-center mb-4'>
                 <h2 className='text-xl font-semibold'>Employee Management</h2>
                 {/* Employee Registration Modal (formerly AddEmployeeModal) */}
-
+                {/* Button is always shown now that permissions are removed */}
                 <Button
                   type='primary'
                   onClick={() => {
@@ -269,6 +251,7 @@ const PayrollDashboard: React.FC = () => {
                     onSelectEmployee={setSelectedEmployee}
                     selectedEmployee={selectedEmployee}
                     onEditEmployee={handleEditEmployee} // Pass the new edit handler
+                    // Removed canManageEmployees prop
                   />
                 </div>
                 <div className='lg:col-span-1'>
@@ -282,11 +265,19 @@ const PayrollDashboard: React.FC = () => {
                 employees={employees}
                 onUpdateEmployeeHours={handleEmployeeActionSuccess} // This will trigger fetchEmployees
                 onTimeEntryActionSuccess={handleEmployeeActionSuccess} // Pass to refresh dashboard stats
+                // Removed canManageTimeEntries prop
               />
             </TabsContent>
           </Tabs>
         </motion.div>
       </motion.div>
+      {/* EmployeeRegistration Modal for Add/Edit */}
+      <EmployeeRegistration
+        isOpen={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
+        onSuccess={handleEmployeeActionSuccess}
+        initialData={editingEmployee}
+      />
     </div>
   );
 };
