@@ -18,7 +18,7 @@ import axios from 'axios'
 if (typeof HighchartsMore === 'function') HighchartsMore(Highcharts)
 
 // IMPORTANT: Replace with your actual backend API URL
-const API_BASE_URL = 'http://localhost:3000';
+const API_BASE_URL = 'https://quantnow.onrender.com';
 
 const Projections = () => {
   const { toast } = useToast()

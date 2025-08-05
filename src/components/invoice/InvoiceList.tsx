@@ -35,7 +35,7 @@ import { InvoiceForm } from './InvoiceForm';
 import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '../../AuthPage'; // Import useAuth
 
-const API_BASE_URL = 'http://localhost:3000';
+const API_BASE_URL = 'https://quantnow.onrender.com';
 
 interface InvoiceLineItem {
     id?: string;

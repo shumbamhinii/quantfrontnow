@@ -55,7 +55,7 @@ declare global {
 }
 
 // Define API Base URL
-const API_BASE_URL = 'http://localhost:3000';
+const API_BASE_URL = 'https://quantnow.onrender.com';
 
 // --- Interfaces to match backend API responses for Quotations ---
 interface QuotationLineItem {
@@ -628,7 +628,7 @@ export function QuotationList() {
     }
 
     // Use company name from profile for email subject and body
-    const companyName = userProfile.company || 'Your Compa';
+    const companyName = userProfile.company || 'Your Company';
     setEmailSubject(`Quotation ${quotation.quotation_number} from ${companyName}`);
     setEmailBody(`Dear ${quotation.customer_name},\n\nPlease find attached your quotation, ${quotation.quotation_number}, for your review.\n\nBest regards,\n${userProfile.contact_person || companyName} Team`);
     setIsEmailModalOpen(true);

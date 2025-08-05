@@ -101,8 +101,8 @@ const DataAnalytics = () => {
         revenueTrendRes,
         transactionVolumeRes,
       ] = await Promise.all([
-        fetch('http://localhost:3000/api/charts/revenue-trend', { headers }),
-        fetch('http://localhost:3000/api/charts/transaction-volume', { headers }),
+        fetch('https://quantnow.onrender.com/api/charts/revenue-trend', { headers }),
+        fetch('https://quantnow.onrender.com/api/charts/transaction-volume', { headers }),
       ]);
 
       // Check all responses for success

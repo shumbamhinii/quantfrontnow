@@ -600,7 +600,7 @@ const EditableTransactionTable = ({ transactions: initialTransactions, accounts,
 // --- Main ChatInterface Component ---
 const ChatInterface = () => {
   const RAIRO_API_BASE_URL = 'https://rairo-stmt-api.hf.space';
-  const API_BASE_URL = 'http://localhost:3000';
+  const API_BASE_URL = 'https://quantnow.onrender.com';
 
   const [messages, setMessages] = useState<Array<{ id: string; sender: string; content: string | JSX.Element }>>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);

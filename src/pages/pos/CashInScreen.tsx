@@ -42,7 +42,7 @@ interface ExpectedCash {
 }
 
 // Placeholder for your backend API URL
-const API_BASE_URL = 'http://localhost:3000';
+const API_BASE_URL = 'https://quantnow.onrender.com';
 
 export default function CashInScreen() {
   const [messageApi, contextHolder] = message.useMessage();
