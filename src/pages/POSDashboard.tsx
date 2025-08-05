@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useCallback } from 'react' // Added useCallback
 import {
   Typography,
   Row,
@@ -9,7 +9,8 @@ import {
   Card,
   Spin,
   Badge,
-  Grid
+  Grid,
+  message // Import message for error handling
 } from 'antd'
 import Highcharts from 'highcharts'
 import HighchartsReact from 'highcharts-react-official'
@@ -20,14 +21,14 @@ import {
   AlertOutlined,
   LineChartOutlined
 } from '@ant-design/icons'
-// import { db } from '../firebase' // No longer needed
-// import { collection, getDocs } from 'firebase/firestore' // No longer needed
 import type { Product } from '../types/type'
 import dayjs from 'dayjs'
-// import { useAuth } from '../AuthPage'; // No longer needed
+import { useAuth } from '../AuthPage'; // Re-add useAuth
 
 const { Text } = Typography
 const { useBreakpoint } = Grid
+// REMOVE THIS LINE: const [messageApi, contextHolder] = message.useMessage(); // Define useMessage at the top level
+
 
 const now = dayjs()
 const months = Array.from({ length: now.month() + 1 }, (_, i) =>
@@ -37,17 +38,15 @@ const monthKeys = Array.from({ length: now.month() + 1 }, (_, i) =>
   dayjs().month(i).format('YYYY-MM')
 )
 
-// --- DUMMY DATA ---
-const DUMMY_SALES_DATA_DASHBOARD = [
-  { id: 'sale1', createdAt: new Date('2024-01-15'), cart: [{ id: 'prod1', quantity: 2 }, { id: 'prod2', quantity: 5 }] },
-  { id: 'sale2', createdAt: new Date('2024-02-20'), cart: [{ id: 'prod1', quantity: 1 }, { id: 'serv1', quantity: 1 }] },
-  { id: 'sale3', createdAt: new Date('2024-03-10'), cart: [{ id: 'prod2', quantity: 10 }] },
-  { id: 'sale4', createdAt: new Date('2024-04-05'), cart: [{ id: 'prod3', quantity: 3 }] },
-  { id: 'sale5', createdAt: new Date('2024-05-22'), cart: [{ id: 'serv2', quantity: 2 }] },
-  { id: 'sale6', createdAt: new Date('2024-06-01'), cart: [{ id: 'prod1', quantity: 1 }, { id: 'prod3', quantity: 2 }] },
-  { id: 'sale7', createdAt: new Date('2024-07-10'), cart: [{ id: 'prod2', quantity: 7 }, { id: 'serv1', quantity: 1 }] },
-];
-// --- END DUMMY DATA ---
+// Define a type for the fetched sales data from the backend
+interface FetchedSaleItem {
+    saleId: string;
+    createdAt: Date; // Will be a Date object after transformation
+    product_id: string; // This is the ID of the product or service
+    product_name: string;
+    quantity: number;
+    unit_price_at_sale: number;
+}
 
 type Props = {
   products: Product[]
@@ -72,63 +71,94 @@ const asDisplayPrice = (item: Product) =>
   Number(item.unitPrice ?? item.price ?? 0)
 
 const POSDashboard = ({ products }: Props) => {
+  // MOVE IT HERE:
+  const [messageApi, contextHolder] = message.useMessage(); // Define useMessage inside the functional component
+
   const [loading, setLoading] = useState(true)
   const [monthlySales, setMonthlySales] = useState<{
     [productId: string]: number[]
   }>({})
-  const [trendProduct, setTrendProduct] = useState(products[0]?.name || '')
+  // Use product ID for trend selection, it's more reliable than name
+  const [trendProductId, setTrendProductId] = useState<string | undefined>(undefined);
   const screens = useBreakpoint()
   const isMobile = !screens.md
+  const { isAuthenticated } = useAuth(); // Re-introduce useAuth
 
-  // const { isAuthenticated } = useAuth(); // No longer needed
-  // const token = localStorage.getItem('access_token'); // No longer needed
-
-  // --- Fetch sales and aggregate monthly sales for each product (now from dummy data) ---
-  useEffect(() => {
-    const fetchMonthlySales = async () => {
-      // if (!isAuthenticated || !token) { // No longer needed
-      //   console.warn('POSDashboard: Not authenticated. Skipping sales fetch.');
-      //   setMonthlySales({});
-      //   setLoading(false);
-      //   return;
-      // }
-      setLoading(true)
-      // Simulate fetching from Firestore
-      await new Promise(resolve => setTimeout(resolve, 500));
-
-      const sales = DUMMY_SALES_DATA_DASHBOARD; // Use dummy sales data
-      const salesPerProduct: { [productId: string]: number[] } = {}
-      for (const sale of sales) {
-        const date = sale.createdAt; // Already a Date object
-        if (!date) continue
-        const monthKey = dayjs(date).format('YYYY-MM')
-        const monthIdx = monthKeys.indexOf(monthKey)
-        if (monthIdx === -1) continue
-        const cart: any[] = Array.isArray(sale.cart)
-          ? sale.cart
-          : sale.items || []
-        for (const item of cart) {
-          if (!item.id) continue
-          if (!salesPerProduct[item.id]) {
-            salesPerProduct[item.id] = Array(months.length).fill(0)
-          }
-          salesPerProduct[item.id][monthIdx] += Number(
-            item.quantity || item.qty || 0
-          )
-        }
-      }
-      setMonthlySales(salesPerProduct)
-      setLoading(false)
+  // --- Fetch sales and aggregate monthly sales for each product (from backend) ---
+  const fetchMonthlySales = useCallback(async () => {
+    if (!isAuthenticated) {
+      console.warn('POSDashboard: Not authenticated. Skipping sales fetch.');
+      setMonthlySales({});
+      setLoading(false);
+      return;
     }
-    fetchMonthlySales()
-    // eslint-disable-next-line
-  }, [products.length]) // Removed isAuthenticated, token from dependencies
+
+    setLoading(true);
+    try {
+        const token = localStorage.getItem('token'); // Get the token from local storage
+        if (!token) {
+            throw new Error('No authentication token found.');
+        }
+
+        // Use process.env.REACT_APP_BACKEND_URL for consistency
+        const res = await fetch(`http://localhost:3000/api/dashboard/sales`, {
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        if (!res.ok) {
+            const errorData = await res.json();
+            throw new Error(errorData.detail || 'Failed to fetch sales data');
+        }
+
+        const data: FetchedSaleItem[] = await res.json();
+
+        const salesPerProduct: { [productId: string]: number[] } = {};
+
+        for (const item of data) {
+            const date = new Date(item.createdAt); // Ensure it's a Date object
+            if (isNaN(date.getTime())) { // Check for invalid dates
+                console.warn('Invalid date encountered:', item.createdAt);
+                continue;
+            }
+
+            const monthKey = dayjs(date).format('YYYY-MM');
+            const monthIdx = monthKeys.indexOf(monthKey);
+
+            if (monthIdx === -1) { // Skip if month is outside our current range
+                continue;
+            }
+
+            if (!salesPerProduct[item.product_id]) {
+                salesPerProduct[item.product_id] = Array(months.length).fill(0);
+            }
+            salesPerProduct[item.product_id][monthIdx] += Number(item.quantity || 0);
+        }
+        setMonthlySales(salesPerProduct);
+        messageApi.success('Sales data loaded successfully!');
+    } catch (error: any) {
+        console.error('Error fetching sales data:', error);
+        messageApi.error(`Failed to load sales data: ${error.message}`);
+        setMonthlySales({}); // Clear sales data on error
+    } finally {
+        setLoading(false);
+    }
+  }, [isAuthenticated, messageApi]); // Add messageApi to useCallback dependencies
+
+  useEffect(() => {
+    fetchMonthlySales();
+  }, [fetchMonthlySales]); // Dependency on fetchMonthlySales (which depends on isAuthenticated and messageApi)
 
   // Low stock alert: only products (not services) where qty <= minQty
   const alerts = products.filter(
     p => p.type !== 'service' && asDisplayValue(p) <= (Number(p.minQty) || 0)
   )
-  const productCount = products.filter(p => p.type !== 'service').length
+
+  // Total count of all products and services
+  const totalProductsAndServicesCount = products.length;
+
   const lowStockCount = alerts.length
 
   // Metrics
@@ -138,18 +168,30 @@ const POSDashboard = ({ products }: Props) => {
   )
 
   // --- Trends ---
-  const selectedProduct = products.find(p => p.name === trendProduct)
-  const selectedId = selectedProduct?.id
+  // Find the selected product using its ID from trendProductId state
+  const selectedProduct = products.find(p => p.id === trendProductId);
+  const trendProductName = selectedProduct?.name || ''; // Name for display in chart title
+
   const lineData =
-    selectedId && monthlySales[selectedId]
-      ? monthlySales[selectedId]
-      : Array(months.length).fill(0)
-  const barData = months.map((_, i) =>
-    products.reduce((sum, p) => sum + (monthlySales[p.id]?.[i] || 0), 0)
-  )
+    selectedProduct?.id && monthlySales[selectedProduct.id]
+      ? monthlySales[selectedProduct.id]
+      : Array(months.length).fill(0);
+
+  // Calculate total units sold per month across all products/services
+  const barData = months.map((_, i) => {
+    let totalUnitsSoldInMonth = 0;
+    for (const productId in monthlySales) {
+        if (monthlySales[productId][i] !== undefined) {
+            totalUnitsSoldInMonth += monthlySales[productId][i];
+        }
+    }
+    return totalUnitsSoldInMonth;
+  });
+
   const topThree = [...products]
     .map(p => ({
       ...p,
+      // For top sellers, sum the quantities from monthlySales for that product/service
       sold: monthlySales[p.id]
         ? monthlySales[p.id].reduce((a, b) => a + b, 0)
         : 0
@@ -170,14 +212,13 @@ const POSDashboard = ({ products }: Props) => {
       backgroundColor: 'transparent'
     },
     title: {
-      text: '',
+      text: '', // Title hidden, as it's typically "Top Sellers" handled by Divider
       style: { fontSize: isMobile ? 14 : 16 }
     },
     xAxis: {
       categories: topThree.map(p => p.name),
       labels: {
         style: { fontSize: isMobile ? 11 : 13 },
-        title: { text: 'Product' }
       }
     },
     yAxis: {
@@ -215,7 +256,7 @@ const POSDashboard = ({ products }: Props) => {
       backgroundColor: 'transparent'
     },
     title: {
-      text: `Monthly Sales Trend: ${trendProduct}`,
+      text: `Monthly Sales Trend: ${trendProductName}`, // Use trendProductName
       style: { fontSize: isMobile ? 14 : 16 }
     },
     xAxis: {
@@ -243,7 +284,7 @@ const POSDashboard = ({ products }: Props) => {
     },
     series: [
       {
-        name: trendProduct,
+        name: trendProductName, // Use trendProductName
         data: lineData,
         color: '#6C63FF',
         fillOpacity: 0.15,
@@ -259,7 +300,7 @@ const POSDashboard = ({ products }: Props) => {
       backgroundColor: 'transparent'
     },
     title: {
-      text: 'Total Units Sold (All Products)',
+      text: 'Total Units Sold (All Products & Services)', // Updated title
       style: { fontSize: isMobile ? 14 : 16 }
     },
     xAxis: {
@@ -291,15 +332,26 @@ const POSDashboard = ({ products }: Props) => {
     ]
   }
 
+  // Effect to set initial trendProductId or adjust if selected product is gone
   useEffect(() => {
-    if (products[0]?.name) setTrendProduct(products[0].name)
-  }, [products])
+    if (products.length > 0) {
+        // If no product is selected or the current selected product is no longer in the list
+        if (!trendProductId || !products.some(p => p.id === trendProductId)) {
+            setTrendProductId(products[0].id); // Set to the first product's ID
+        }
+    } else {
+        setTrendProductId(undefined); // Clear if no products available
+    }
+  }, [products, trendProductId]); // Dependency on products and trendProductId
 
   // Responsive cards: stack on mobile, row on desktop
   return (
     <div>
+        {contextHolder} {/* Renders message notifications */}
       {loading ? (
-        <Spin />
+        <div style={{ textAlign: 'center', padding: '50px 0' }}>
+            <Spin size="large" tip="Loading dashboard data..." />
+        </div>
       ) : (
         <>
           <Row
@@ -328,10 +380,10 @@ const POSDashboard = ({ products }: Props) => {
                   }}
                 />
                 <Text type='secondary' style={{ fontSize: isMobile ? 12 : 13 }}>
-                  Total Products
+                  Total Products & Services
                 </Text>
                 <div style={{ fontWeight: 700, fontSize: isMobile ? 26 : 32 }}>
-                  {productCount}
+                  {totalProductsAndServicesCount}
                 </div>
               </Card>
             </Col>
@@ -414,34 +466,39 @@ const POSDashboard = ({ products }: Props) => {
             containerProps={{ style: { width: '100%' } }}
           />
           <Divider>Product Trend</Divider>
-          <Select
-            showSearch
-            virtual
-            style={{
-              width: '100%',
-              maxWidth: 350,
-              margin: '0 auto 18px auto',
-              display: 'block'
-            }}
-            placeholder='Select Product'
-            value={trendProduct}
-            options={products.map(p => ({
-              label: (
-                <span>
-                  {productIcon(p)} {p.name}
-                </span>
-              ),
-              value: p.name
-            }))}
-            onChange={setTrendProduct}
-            filterOption={(input, option) =>
-              (option?.label as any)?.props?.children?.[1]
-                ?.toLowerCase()
-                .includes(input.toLowerCase())
-            }
-            optionLabelProp='label'
-            // disabled={!isAuthenticated} // No longer needed
-          />
+          {products.length > 0 ? ( // Only show select if products exist
+              <Select
+                showSearch
+                virtual
+                style={{
+                  width: '100%',
+                  maxWidth: 350,
+                  margin: '0 auto 18px auto',
+                  display: 'block'
+                }}
+                placeholder='Select Product'
+                value={trendProductId} // Use product ID as the value
+                options={products.map(p => ({
+                  label: (
+                    <span>
+                      {productIcon(p)} {p.name}
+                    </span>
+                  ),
+                  value: p.id // Use product ID as the option value
+                }))}
+                onChange={setTrendProductId} // Directly set the ID when an option is selected
+                filterOption={(input, option) =>
+                  (option?.label as any)?.props?.children?.[1] // Access the name part of the label
+                    ?.toLowerCase()
+                    .includes(input.toLowerCase())
+                }
+                optionLabelProp='label'
+                disabled={!isAuthenticated}
+              />
+          ) : (
+              <Text type="secondary">No products or services available for trend analysis.</Text>
+          )}
+
           <HighchartsReact
             highcharts={Highcharts}
             options={trendLineOptions}

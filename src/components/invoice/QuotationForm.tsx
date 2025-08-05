@@ -17,7 +17,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { useAuth } from '../../AuthPage'; // Import useAuth
 
 // Define API Base URL
-const API_BASE_URL = 'https://quantnow.onrender.com';
+const API_BASE_URL = 'http://localhost:3000';
 
 // Re-defining interfaces based on your provided backend structure for Quotations
 interface QuotationLineItem {

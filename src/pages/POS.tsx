@@ -57,8 +57,8 @@ interface CustomerFrontend {
   address: string | null;
   taxId: string | null; // Changed from vatNumber to taxId to match mapCustomerToFrontend
   totalInvoiced: number; // Already camelCase
-  // Note: creditScore from dummy data is not in CustomerDB, will need to be managed
-  // if it's a frontend-only concept or added to DB. For now, it's removed.
+  balanceDue?: number; // Added for credit functionality - assuming backend provides this
+  creditLimit?: number; // Added for credit functionality - assuming backend provides this
 }
 
 // Type for cart items, based on ProductDB, but allowing custom items
@@ -74,7 +74,7 @@ type CartItem = (ProductDB | {
 type PaymentType = 'Cash' | 'Bank' | 'Credit';
 // --- END: MODIFIED TYPES TO MATCH BACKEND API ---
 
-const API_BASE_URL = 'https://quantnow.onrender.com'; // IMPORTANT: Replace with your actual backend API URL
+const API_BASE_URL = 'http://localhost:3000'; // IMPORTANT: Replace with your actual backend API URL
 
 // Define fixed VAT rate options (same as QuotationForm)
 const VAT_OPTIONS = [
@@ -143,6 +143,7 @@ export default function POSScreen() {
         }
         const data: CustomerFrontend[] = await response.json();
         setCustomers(data);
+        console.log('Fetched customers:', data); // Log fetched data
       } catch (error) {
         console.error('Error fetching customers:', error);
         messageApi.error('Failed to fetch customers.');
@@ -167,6 +168,7 @@ export default function POSScreen() {
         }
         const data: ProductDB[] = await response.json();
         setProducts(data);
+        console.log('Fetched products:', data); // Log fetched data
       } catch (error) {
         console.error('Error fetching products:', error);
         messageApi.error('Failed to fetch products.');
@@ -181,6 +183,7 @@ export default function POSScreen() {
     } else {
       setCustomers([]);
       setProducts([]);
+      console.warn('User not authenticated, not fetching data.');
     }
   }, [isAuthenticated, token, getAuthHeaders, messageApi]); // Add isAuthenticated, token, getAuthHeaders, messageApi to dependencies
   // --- END: FETCH DATA FROM API ON COMPONENT MOUNT ---
@@ -349,30 +352,42 @@ export default function POSScreen() {
       messageApi.warning('Add at least one product to the cart');
       return;
     }
-    if (paymentType === 'Credit' && !selectedCustomer) {
-      messageApi.error('Customer not selected for credit sale.');
-      return;
+
+    if (paymentType === 'Credit') {
+      if (!selectedCustomer) {
+        messageApi.error('Customer not selected for credit sale.');
+        return;
+      }
+
+      // --- New: Credit limit check ---
+      const currentBalance = selectedCustomer.balanceDue || 0;
+      const customerCreditLimit = selectedCustomer.creditLimit || Infinity; // Use Infinity if no limit is explicitly set
+
+      if (customerCreditLimit !== Infinity && (currentBalance + total) > customerCreditLimit) {
+        messageApi.error(
+          `Credit limit exceeded for ${selectedCustomer.name}. Current balance: R${currentBalance.toFixed(2)}, ` +
+          `Credit limit: R${customerCreditLimit.toFixed(2)}. This sale would put balance at R${(currentBalance + total).toFixed(2)}.`
+        );
+        return; // Prevent submission if limit exceeded
+      }
+      // --- End: Credit limit check ---
     }
-    // Optional: Add more robust credit check logic if needed (e.g., from customer's data fetched from backend)
-    // For now, if a customer is selected for credit, proceed.
 
     setIsLoading(true); // Set loading true
     try {
       const salePayload = {
-cart: cart.map(item => {
-  const isRealProduct = typeof item.id === 'number';
-
-  return {
-    ...(isRealProduct ? { id: item.id } : {}), // ✅ only include ID if it's a number
-    name: item.name,
-    quantity: item.quantity,
-    unit_price: item.unit_price,
-    subtotal: item.subtotal,
-    is_service: item.is_service || false,
-    tax_rate_value: item.tax_rate_value ?? 0,
-  };
-}),
-
+        cart: cart.map(item => {
+          const isRealProduct = typeof item.id === 'number';
+          return {
+            ...(isRealProduct ? { id: item.id } : {}),
+            name: item.name,
+            quantity: item.quantity,
+            unit_price: item.unit_price,
+            subtotal: item.subtotal,
+            is_service: item.is_service || false,
+            tax_rate_value: item.tax_rate_value ?? 0,
+          };
+        }),
         paymentType,
         total,
         customer: selectedCustomer
@@ -381,10 +396,9 @@ cart: cart.map(item => {
         amountPaid: paymentType === 'Cash' ? amountPaid : 0,
         change: paymentType === 'Cash' ? change : 0,
         dueDate: paymentType === 'Credit' ? dueDate : null,
-        // These would come from authenticated user data or configuration
-        tellerName: 'Dummy Teller', // Replace with actual user's name if authenticated
-        branch: 'Dummy Branch', // Replace with actual branch if applicable
-        companyName: 'DummyCo', // Replace with actual company name
+        tellerName: 'Dummy Teller',
+        branch: 'Dummy Branch',
+        companyName: 'DummyCo',
       };
 
       const response = await fetch(`${API_BASE_URL}/api/sales`, {
@@ -404,9 +418,6 @@ cart: cart.map(item => {
       const result = await response.json();
       console.log('Sale submitted successfully:', result);
 
-      // --- OPTIONAL: Re-fetch products to update stock quantities displayed ---
-      // This ensures the displayed stock reflects the latest from the database
-      // after a sale, especially if multiple POS stations are operating.
       try {
         const productsResponse = await fetch(`${API_BASE_URL}/products-services`, {
           headers: getAuthHeaders(),
@@ -415,6 +426,7 @@ cart: cart.map(item => {
           const updatedProductsFromAPI: ProductDB[] =
             await productsResponse.json();
           setProducts(updatedProductsFromAPI);
+          console.log('Successfully re-fetched products after sale.');
         } else {
           console.warn(
             'Failed to re-fetch products after sale, stock display might be outdated.',
@@ -424,7 +436,6 @@ cart: cart.map(item => {
         console.warn('Error re-fetching products:', fetchError);
       }
 
-      // Clear cart and reset payment details
       setCart([]);
       setAmountPaid(0);
       setDueDate(null);
@@ -465,6 +476,16 @@ cart: cart.map(item => {
             <div style={{ fontSize: 12, color: '#888' }}>
               {selectedCustomer?.phone}
             </div>
+            {selectedCustomer?.balanceDue !== undefined && ( // Display balanceDue if available
+              <div style={{ fontSize: 12, color: selectedCustomer.balanceDue > 0 ? 'red' : '#888' }}>
+                Outstanding Balance: R{selectedCustomer.balanceDue.toFixed(2)}
+              </div>
+            )}
+            {selectedCustomer?.creditLimit !== undefined && selectedCustomer.creditLimit > 0 && ( // Display credit limit if available and > 0
+              <div style={{ fontSize: 12, color: '#888' }}>
+                Credit Limit: R{selectedCustomer.creditLimit.toFixed(2)}
+              </div>
+            )}
           </div>
           <UserAddOutlined />
         </Card>
@@ -489,19 +510,18 @@ cart: cart.map(item => {
             </Text>
             <div style={{ fontSize: 12, color: '#888' }}>
               {selectedProduct ? `Price: R${selectedProduct.unit_price.toFixed(2)}` : ''}{' '}
-              {/* Use unit_price */}
             </div>
             {selectedProduct && (
               <div style={{ fontSize: 12, color: '#888' }}>
                 Stock: {selectedProduct.stock_quantity ?? 0}{' '}
-                {selectedProduct.unit || ''} {/* Use stock_quantity */}
+                {selectedProduct.unit || ''}
               </div>
             )}
           </div>
           <ShoppingCartOutlined />
         </Card>
 
-        {/* Quantity & Add to Cart (now always visible but disabled if no product or custom form not active) */}
+        {/* Quantity & Add to Cart */}
         <Row gutter={6} align='middle' style={{ marginBottom: 10 }}>
           <Col>
             <Button
@@ -525,7 +545,7 @@ cart: cart.map(item => {
             <Button
               size='small'
               onClick={() => {
-                const max = selectedProduct?.stock_quantity ?? Infinity; // Use stock_quantity
+                const max = selectedProduct?.stock_quantity ?? Infinity;
                 setProductQty(q => Math.min(q + 1, max));
               }}
               disabled={!isAuthenticated || isLoading || (!selectedProduct && !showCustomProductForm)}
@@ -569,7 +589,7 @@ cart: cart.map(item => {
                       danger
                       size='small'
                       onClick={() => removeFromCart(r.id)}
-                      disabled={!isAuthenticated} // Disable if not authenticated
+                      disabled={!isAuthenticated}
                     >
                       Remove
                     </Button>
@@ -602,7 +622,7 @@ cart: cart.map(item => {
                       size='small'
                       danger
                       onClick={() => removeFromCart(item.id)}
-                      disabled={!isAuthenticated} // Disable if not authenticated
+                      disabled={!isAuthenticated}
                     >
                       Remove
                     </Button>
@@ -622,7 +642,7 @@ cart: cart.map(item => {
                 value={paymentType}
                 onChange={setPaymentType}
                 style={{ width: '100%' }}
-                disabled={!isAuthenticated || isLoading} // Disable if not authenticated or loading
+                disabled={!isAuthenticated || isLoading}
               >
                 <Option value='Cash'>Cash</Option>
                 <Option value='Bank'>Bank</Option>
@@ -637,7 +657,7 @@ cart: cart.map(item => {
                   value={amountPaid}
                   onChange={value => setAmountPaid(value ?? 0)}
                   style={{ width: '100%' }}
-                  disabled={!isAuthenticated || isLoading} // Disable if not authenticated or loading
+                  disabled={!isAuthenticated || isLoading}
                 />
                 <div>
                   <Text strong>
@@ -657,7 +677,7 @@ cart: cart.map(item => {
                   value={dueDate || ''}
                   onChange={e => setDueDate(e.target.value)}
                   style={{ width: '100%' }}
-                  disabled={!isAuthenticated || isLoading} // Disable if not authenticated or loading
+                  disabled={!isAuthenticated || isLoading}
                 />
                 {selectedCustomer && (
                   <Text type='warning' style={{ color: 'orange' }}>
@@ -677,8 +697,8 @@ cart: cart.map(item => {
             block
             onClick={handleSubmit}
             disabled={
-              !isAuthenticated || // Disable if not authenticated
-              isLoading || // Disable if loading
+              !isAuthenticated ||
+              isLoading ||
               cart.length === 0 ||
               (paymentType === 'Cash' && amountPaid < total) ||
               (paymentType === 'Credit' && !selectedCustomer)
@@ -703,14 +723,14 @@ cart: cart.map(item => {
             value={customerSearch}
             onChange={e => setCustomerSearch(e.target.value)}
             style={{ marginBottom: 10 }}
-            disabled={!isAuthenticated || isLoading} // Disable if not authenticated or loading
+            disabled={!isAuthenticated || isLoading}
           />
           <div style={{ maxHeight: 270, overflowY: 'auto' }}>
             {customers
               .filter(
                 c =>
                   c.name.toLowerCase().includes(customerSearch.toLowerCase()) ||
-                  c.phone?.includes(customerSearch) || // Search by phone too
+                  c.phone?.includes(customerSearch) ||
                   c.email?.toLowerCase().includes(customerSearch.toLowerCase()),
               )
               .map(c => (
@@ -742,7 +762,7 @@ cart: cart.map(item => {
               type='dashed'
               icon={<PlusOutlined />}
               onClick={() => setShowNewCustomer(true)}
-              disabled={!isAuthenticated || isLoading} // Disable if not authenticated or loading
+              disabled={!isAuthenticated || isLoading}
             >
               Add New Customer
             </Button>
@@ -791,9 +811,9 @@ cart: cart.map(item => {
           open={productModal}
           onCancel={() => {
             setProductModal(false);
-            setShowCustomProductForm(false); // Reset custom product form visibility
-            setSelectedProduct(null); // Clear selected product
-            setProductQty(1); // Reset quantity
+            setShowCustomProductForm(false);
+            setSelectedProduct(null);
+            setProductQty(1);
             setCustomProductName('');
             setCustomProductUnitPrice(0);
             setCustomProductDescription('');
@@ -812,70 +832,74 @@ cart: cart.map(item => {
                 disabled={!isAuthenticated || isLoading}
               />
               <div style={{ maxHeight: 270, overflowY: 'auto', marginBottom: 10 }}>
-                {products
-                  .filter(
-                    p =>
-                      p.name.toLowerCase().includes(productSearch.toLowerCase()) ||
-                      p.sku?.toLowerCase().includes(productSearch.toLowerCase()),
-                  )
-                  .map(p => (
-                    <Card
-                      key={p.id}
-                      style={{ marginBottom: 7, cursor: 'pointer' }}
-                      onClick={() => {
-                        setSelectedProduct(p);
-                        setProductModal(false); // Close modal after selection
-                      }}
-                      size='small'
-                      bodyStyle={{
-                        display: 'flex',
-                        justifyContent: 'space-between',
-                        alignItems: 'center',
-                      }}
-                    >
-                      <div>
-                        <Text strong>{p.name}</Text>
-                        <div style={{ fontSize: 13, color: '#888' }}>
-                          R{p.unit_price.toFixed(2)} &nbsp; | &nbsp; Stock: {p.stock_quantity ?? 0}{' '}
+                {products.length === 0 ? (
+                  <Text type="secondary">No products found. Check your API endpoint.</Text>
+                ) : (
+                  products
+                    .filter(
+                      p =>
+                        p.name.toLowerCase().includes(productSearch.toLowerCase()) ||
+                        p.sku?.toLowerCase().includes(productSearch.toLowerCase()),
+                    )
+                    .map(p => (
+                      <Card
+                        key={p.id}
+                        style={{ marginBottom: 7, cursor: 'pointer' }}
+                        onClick={() => {
+                          setSelectedProduct(p);
+                          setProductQty(1);
+                          setProductModal(false);
+                        }}
+                        size='small'
+                        bodyStyle={{
+                          display: 'flex',
+                          justifyContent: 'space-between',
+                          alignItems: 'center',
+                        }}
+                      >
+                        <div>
+                          <Text strong>{p.name}</Text>
+                          <div style={{ fontSize: 13, color: '#888' }}>
+                            Price: R{p.unit_price.toFixed(2)}{' '}
+                            {p.is_service ? '(Service)' : ''}
+                          </div>
+                          <div style={{ fontSize: 13, color: '#888' }}>
+                            Stock: {p.stock_quantity ?? 0} {p.unit || ''}
+                          </div>
                         </div>
-                      </div>
-                    </Card>
-                  ))}
+                      </Card>
+                    ))
+                )}
               </div>
               <Button
                 block
                 type='dashed'
                 icon={<PlusOutlined />}
-                onClick={() => {
-                  setShowCustomProductForm(true);
-                  setSelectedProduct(null); // Clear any selected product
-                  setProductSearch(''); // Clear search
-                }}
+                onClick={() => setShowCustomProductForm(true)}
                 disabled={!isAuthenticated || isLoading}
               >
-                Add Custom Product
+                Add Custom Product/Service
               </Button>
             </>
           ) : (
-            // Custom Product Form
-            <Form layout='vertical' style={{ marginTop: 12 }}>
-              <Form.Item label='Product Name' required>
+            <Form layout='vertical'>
+              <Form.Item label='Custom Product/Service Name' required>
                 <Input
                   value={customProductName}
                   onChange={e => setCustomProductName(e.target.value)}
-                  placeholder='e.g., Custom Service, Special Item'
+                  placeholder='E.g., Custom Repair, Consultation Fee'
                   disabled={!isAuthenticated || isLoading}
                 />
               </Form.Item>
               <Form.Item label='Unit Price' required>
                 <InputNumber
-                  min={0}
+                  min={0.01}
                   step={0.01}
                   value={customProductUnitPrice}
                   onChange={value => setCustomProductUnitPrice(value ?? 0)}
                   style={{ width: '100%' }}
                   formatter={value => `R ${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
-                  parser={(value: any) => value.replace(/R\s?|(,*)/g, '')}
+                  parser={value => value!.replace(/R\s?|(,*)/g, '') as unknown as number}
                   disabled={!isAuthenticated || isLoading}
                 />
               </Form.Item>

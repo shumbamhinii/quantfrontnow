@@ -24,6 +24,17 @@ import { motion } from 'framer-motion';
 import { ArrowLeft } from 'lucide-react';
 import { useAuth } from '../AuthPage'; // Import useAuth
 
+// NEW IMPORTS FOR DROPDOWN AND TOAST
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { useToast } from '@/components/ui/use-toast'; // Assuming you have a toast component
+
+
 // Define interfaces for data fetched from backend
 interface Transaction {
   id: string;
@@ -52,13 +63,14 @@ interface Asset {
   book_value: number; // Calculated
 }
 
-const API_BASE_URL = 'https://quantnow.onrender.com'; // Your backend URL
+const API_BASE_URL = 'http://localhost:3000'; // Your backend URL
 
 const Financials = () => {
   const navigate = useNavigate();
   // latestProcessedTransactions from context might be for recent imports,
   // for statements, we'll fetch all relevant transactions from the backend.
   const { latestProcessedTransactions } = useFinancials();
+  const { toast } = useToast(); // Initialize useToast
 
   const [fromDate, setFromDate] = useState('2025-01-01');
   const [toDate, setToDate] = useState(new Date().toISOString().split('T')[0]);
@@ -75,11 +87,14 @@ const Financials = () => {
   const [balanceSheetData, setBalanceSheetData] = useState<any>({ assets: [], liabilities: [], equity: [] });
   const [cashflowData, setCashflowData] = useState<any[]>([]);
 
+  // NEW STATE for selected document type for download
+  const [selectedDocumentType, setSelectedDocumentType] = useState<string>('income-statement');
+
   const reportTypes = [
     { id: 'trial-balance', label: 'Trial Balance' },
     { id: 'income-statement', label: 'Income Statement' },
     { id: 'balance-sheet', label: 'Balance Sheet' },
-    { id: 'cashflow', label: 'Cashflow Statement' },
+    { id: 'cash-flow-statement', label: 'Cashflow Statement' }, // Corrected ID to match backend
   ];
 
   const { isAuthenticated } = useAuth(); // Get authentication status
@@ -159,78 +174,94 @@ const Financials = () => {
 
   // --- Financial Statement Calculation Logic ---
 
-  // Calculate Trial Balance
-  useEffect(() => {
-    if (allTransactions.length === 0 || allAccounts.length === 0) {
-      setTrialBalanceData([]);
-      return;
+// Calculate Trial Balance - Listing individual income and expense categories
+useEffect(() => {
+    if (allTransactions.length === 0) {
+        setTrialBalanceData([]);
+        return;
     }
 
-    const accountBalances: { [key: string]: number } = {}; // Net balance for each account
-    const accountTypesMap = new Map<string, string>(); // Map account name to type
-
-    allAccounts.forEach(acc => {
-      accountBalances[acc.name] = 0;
-      accountTypesMap.set(acc.name, acc.type);
-    });
+    const trialBalanceMap = new Map<string, { type: 'expense' | 'income', amount: number }>();
 
     allTransactions.forEach(transaction => {
-      const account = allAccounts.find(acc => String(acc.id) === String(transaction.account_id));
-      if (!account) return;
+        const amount = parseFloat(transaction.amount.toString());
+        if (isNaN(amount)) return;
 
-      const amount = parseFloat(transaction.amount.toString());
+        const category = transaction.category || 'Uncategorized'; // Use 'Uncategorized' if category is missing
 
-      // Apply transaction amount to account balance based on account type and transaction type
-      if (account.type === 'Asset' || account.type === 'Expense') {
-        // Debits increase (e.g., cash received, expense incurred)
-        // Credits decrease (e.g., cash paid, asset sold)
-        if (transaction.type === 'income') { // Money coming in (e.g., sales deposited into Bank)
-          accountBalances[account.name] += amount;
-        } else if (transaction.type === 'expense' || transaction.type === 'debt') { // Money going out (e.g., paying expense from Bank, buying asset)
-          accountBalances[account.name] -= amount;
+        if (transaction.type === 'expense') {
+            // Expenses increase debit balance
+            const current = trialBalanceMap.get(category);
+            if (current && current.type === 'expense') {
+                current.amount += amount;
+            } else if (current && current.type === 'income') {
+                // If a category was previously income and now has an expense, handle net effect
+                current.amount -= amount; // Subtract from income balance (effectively reducing credit or creating debit)
+                if (current.amount < 0) {
+                    trialBalanceMap.set(category, { type: 'expense', amount: Math.abs(current.amount) });
+                }
+            } else {
+                trialBalanceMap.set(category, { type: 'expense', amount: amount });
+            }
+        } else if (transaction.type === 'income') {
+            // Income increases credit balance
+            const current = trialBalanceMap.get(category);
+            if (current && current.type === 'income') {
+                current.amount += amount;
+            } else if (current && current.type === 'expense') {
+                // If a category was previously expense and now has an income, handle net effect
+                current.amount -= amount; // Subtract from expense balance (effectively reducing debit or creating credit)
+                if (current.amount < 0) {
+                    trialBalanceMap.set(category, { type: 'income', amount: Math.abs(current.amount) });
+                }
+            } else {
+                trialBalanceMap.set(category, { type: 'income', amount: amount });
+            }
         }
-      } else if (account.type === 'Liability' || account.type === 'Equity' || account.type === 'Income') {
-        // Credits increase (e.g., loan received, revenue earned)
-        // Debits decrease (e.g., loan repaid, owner withdrawal)
-        if (transaction.type === 'income' || (transaction.type === 'debt' && amount > 0)) { // Money coming in (e.g., sales, loan received)
-          accountBalances[account.name] += amount;
-        } else if (transaction.type === 'expense' || (transaction.type === 'debt' && amount < 0)) { // Money going out (e.g., paying liability)
-          accountBalances[account.name] -= amount;
-        }
-      }
     });
 
-    // Convert net balances to debit/credit for Trial Balance display
     const calculatedTrialBalance: { account: string; debit: number; credit: number }[] = [];
-    for (const accountName in accountBalances) {
-      const balance = accountBalances[accountName];
-      const accountType = accountTypesMap.get(accountName);
+    let totalDebit = 0;
+    let totalCredit = 0;
 
-      let debit = 0;
-      let credit = 0;
+    // Process map to create the table rows
+    trialBalanceMap.forEach((data, category) => {
+        let debit = 0;
+        let credit = 0;
 
-      if (accountType === 'Asset' || accountType === 'Expense') {
-        if (balance >= 0) {
-          debit = balance;
-        } else {
-          credit = Math.abs(balance);
+        // Apply "expense on debit, income on credit" rule
+        if (data.type === 'expense') {
+            if (data.amount >= 0) {
+                debit = data.amount;
+            } else { // Handle cases where expense could net to negative (e.g., refunds)
+                credit = Math.abs(data.amount);
+            }
+        } else if (data.type === 'income') {
+            if (data.amount >= 0) {
+                credit = data.amount;
+            } else { // Handle cases where income could net to negative (e.g., returns)
+                debit = Math.abs(data.amount);
+            }
         }
-      } else if (accountType === 'Liability' || accountType === 'Equity' || accountType === 'Income') {
-        if (balance >= 0) {
-          credit = balance;
-        } else {
-          debit = Math.abs(balance);
+
+        // Only include if there's a non-zero balance
+        if (debit !== 0 || credit !== 0) {
+            calculatedTrialBalance.push({ account: category, debit: debit, credit: credit });
+            totalDebit += debit;
+            totalCredit += credit;
         }
-      }
+    });
 
-      if (debit !== 0 || credit !== 0) {
-        calculatedTrialBalance.push({ account: accountName, debit: debit, credit: credit });
-      }
-    }
+    // Sort the categories alphabetically for consistent display
+    calculatedTrialBalance.sort((a, b) => a.account.localeCompare(b.account));
 
+    // Add the totals row (the UI component handles adding this, but we'll include it in the data for clarity if needed)
+    // The existing UI for the table footer already calculates this, so we mainly need the rows.
+    // For a comprehensive data structure:
+    // setTrialBalanceData([...calculatedTrialBalance, { account: 'TOTALS', debit: totalDebit, credit: totalCredit }]);
+    // However, your UI's reduce function already sums, so just the calculated rows are sufficient.
     setTrialBalanceData(calculatedTrialBalance);
-  }, [allTransactions, allAccounts]);
-
+}, [allTransactions]);
   // Calculate Income Statement
   useEffect(() => {
     if (allTransactions.length === 0) {
@@ -334,14 +365,13 @@ const Financials = () => {
     // Calculate Retained Earnings (Net Income from all periods up to asOfDate)
     let cumulativeNetIncome = 0;
     allTransactions.filter(tx => new Date(tx.date) <= asOfDate).forEach(transaction => {
-        const amount = parseFloat(transaction.amount.toString());
-        if (transaction.type === 'income') {
-            cumulativeNetIncome += amount;
-        } else if (transaction.type === 'expense') {
-            cumulativeNetIncome -= amount;
-        }
+      const amount = parseFloat(transaction.amount.toString());
+      if (transaction.type === 'income') {
+        cumulativeNetIncome += amount;
+      } else if (transaction.type === 'expense') {
+        cumulativeNetIncome -= amount;
+      }
     });
-
 
     // ASSETS
     const assets: { item: string; amount: number; isTotal?: boolean }[] = [];
@@ -355,14 +385,14 @@ const Financials = () => {
 
     const accountsReceivable = accountBalances['Accounts Receivable'] || 0;
     if (accountsReceivable !== 0) {
-        assets.push({ item: 'Accounts Receivable', amount: accountsReceivable });
-        totalCurrentAssets += accountsReceivable;
+      assets.push({ item: 'Accounts Receivable', amount: accountsReceivable });
+      totalCurrentAssets += accountsReceivable;
     }
 
     const inventory = accountBalances['Inventory'] || 0;
     if (inventory !== 0) {
-        assets.push({ item: 'Inventory', amount: inventory });
-        totalCurrentAssets += inventory;
+      assets.push({ item: 'Inventory', amount: inventory });
+      totalCurrentAssets += inventory;
     }
 
     assets.push({ item: 'Total Current Assets', amount: totalCurrentAssets, isTotal: true });
@@ -370,19 +400,19 @@ const Financials = () => {
     // Non-Current Assets (Fixed Assets)
     let totalFixedAssetsNetBookValue = 0;
     allAssets.filter(asset => new Date(asset.date_received) <= asOfDate).forEach(asset => {
-        const cost = parseFloat(asset.cost.toString());
-        const accumulatedDepreciation = parseFloat(asset.accumulated_depreciation.toString());
-        const netBookValue = cost - accumulatedDepreciation;
-        if (netBookValue > 0) {
-            assets.push({ item: asset.name, amount: netBookValue });
-            totalNonCurrentAssets += netBookValue;
-        }
+      const cost = parseFloat(asset.cost.toString());
+      const accumulatedDepreciation = parseFloat(asset.accumulated_depreciation.toString());
+      const netBookValue = cost - accumulatedDepreciation;
+      if (netBookValue > 0) {
+        assets.push({ item: asset.name, amount: netBookValue });
+        totalNonCurrentAssets += netBookValue;
+      }
     });
+
     assets.push({ item: 'Total Non-Current Assets', amount: totalNonCurrentAssets, isTotal: true });
 
     const totalAssets = totalCurrentAssets + totalNonCurrentAssets;
     assets.push({ item: 'TOTAL ASSETS', amount: totalAssets, isTotal: true });
-
 
     // LIABILITIES
     const liabilities: { item: string; amount: number; isTotal?: boolean }[] = [];
@@ -392,22 +422,22 @@ const Financials = () => {
     // Current Liabilities (Accounts Payable, Short-term Debt)
     const accountsPayable = accountBalances['Accounts Payable'] || 0;
     if (accountsPayable !== 0) {
-        liabilities.push({ item: 'Accounts Payable', amount: accountsPayable });
-        totalCurrentLiabilities += accountsPayable;
+      liabilities.push({ item: 'Accounts Payable', amount: accountsPayable });
+      totalCurrentLiabilities += accountsPayable;
     }
-
     const shortTermDebt = accountBalances['Short-term Debt'] || 0;
     if (shortTermDebt !== 0) {
-        liabilities.push({ item: 'Short-term Debt', amount: shortTermDebt });
-        totalCurrentLiabilities += shortTermDebt;
+      liabilities.push({ item: 'Short-term Debt', amount: shortTermDebt });
+      totalCurrentLiabilities += shortTermDebt;
     }
+    // Add other current liabilities as needed based on your account structure
     liabilities.push({ item: 'Total Current Liabilities', amount: totalCurrentLiabilities, isTotal: true });
 
     // Non-Current Liabilities (Long-term Debt)
     const longTermDebt = accountBalances['Long-term Debt'] || 0;
     if (longTermDebt !== 0) {
-        liabilities.push({ item: 'Long-term Debt', amount: longTermDebt });
-        totalNonCurrentLiabilities += longTermDebt;
+      liabilities.push({ item: 'Long-term Debt', amount: longTermDebt });
+      totalNonCurrentLiabilities += longTermDebt;
     }
     liabilities.push({ item: 'Total Non-Current Liabilities', amount: totalNonCurrentLiabilities, isTotal: true });
 
@@ -417,227 +447,298 @@ const Financials = () => {
 
     // EQUITY
     const equity: { item: string; amount: number; isTotal?: boolean }[] = [];
-    const shareCapital = accountBalances['Owner\'s Capital'] || 0;
-    equity.push({ item: 'Share Capital', amount: shareCapital });
+    let totalEquity = 0;
+
+    const ownerEquity = accountBalances['Owner\'s Equity'] || 0;
+    if (ownerEquity !== 0) {
+      equity.push({ item: 'Owner\'s Equity', amount: ownerEquity });
+      totalEquity += ownerEquity;
+    }
+
+    // Retained Earnings (cumulative net income up to asOfDate)
     equity.push({ item: 'Retained Earnings', amount: cumulativeNetIncome });
-    const totalEquity = shareCapital + cumulativeNetIncome;
+    totalEquity += cumulativeNetIncome;
+
     equity.push({ item: 'TOTAL EQUITY', amount: totalEquity, isTotal: true });
 
     setBalanceSheetData({ assets, liabilities, equity });
 
   }, [allTransactions, allAccounts, allAssets, toDate]);
 
-  // Calculate Cash Flow Statement
+  // Calculate Cashflow Statement
   useEffect(() => {
     if (allTransactions.length === 0) {
       setCashflowData([]);
       return;
     }
 
-    const operatingActivities: { [key: string]: number } = {};
-    const investingActivities: { [key: string]: number } = {};
-    const financingActivities: { [key: string]: number } = {};
+    // Helper to categorize cash flow
+    const classifyCashFlow = (transaction: Transaction) => {
+      const category = transaction.category?.toLowerCase();
+      const description = transaction.description?.toLowerCase();
+
+      // Operating Activities
+      if (transaction.type === 'income' && (category === 'sales revenue' || category === 'trading income' || category === 'interest income' || category === 'other income')) {
+        return 'operating';
+      }
+      if (transaction.type === 'expense' && category !== 'cost of goods sold' && !['equipment', 'property', 'asset', 'vehicle', 'loan repayment', 'dividend'].some(keyword => description?.includes(keyword) || category?.includes(keyword))) {
+        return 'operating';
+      }
+      if (transaction.type === 'expense' && category === 'cost of goods sold') {
+        return 'operating';
+      }
+
+      // Investing Activities
+      if (transaction.type === 'expense' && ['equipment', 'property', 'asset', 'vehicle'].some(keyword => description?.includes(keyword) || category?.includes(keyword))) {
+        return 'investing';
+      }
+      if (transaction.type === 'income' && ['sale of asset', 'sale of equipment'].some(keyword => description?.includes(keyword) || category?.includes(keyword))) {
+        return 'investing';
+      }
+
+      // Financing Activities
+      if (transaction.type === 'debt' || ['loan repayment', 'loan proceeds', 'share issuance', 'dividend', 'drawings'].some(keyword => description?.includes(keyword) || category?.includes(keyword))) {
+        return 'financing';
+      }
+
+      return 'operating'; // Default to operating if not explicitly classified
+    };
+
+    const cashFlowSections = {
+      operating: { label: 'Cash flow from Operating Activities', items: new Map<string, number>(), total: 0 },
+      investing: { label: 'Cash flow from Investing Activities', items: new Map<string, number>(), total: 0 },
+      financing: { label: 'Cash flow from Financing Activities', items: new Map<string, number>(), total: 0 },
+    };
 
     allTransactions.forEach(transaction => {
+      const flowType = classifyCashFlow(transaction);
       const amount = parseFloat(transaction.amount.toString());
       if (isNaN(amount)) return;
 
-      // Classify transactions into cash flow activities
-      let activityType: 'operating' | 'investing' | 'financing' | null = null;
+      const itemKey = transaction.description || transaction.category || 'Uncategorized';
+      const currentAmount = cashFlowSections[flowType].items.get(itemKey) || 0;
 
-      // Simple classification based on category and type
-      const lowerCategory = transaction.category?.toLowerCase();
-      const lowerDescription = transaction.description?.toLowerCase();
-
+      // For cash flow, income increases cash, expense decreases cash
       if (transaction.type === 'income') {
-        if (lowerCategory === 'sales revenue' || lowerCategory === 'trading income') {
-          activityType = 'operating';
-        } else if (lowerCategory === 'interest income') {
-          activityType = 'operating';
-        } else if (lowerDescription?.includes('sale of asset') || lowerCategory?.includes('sale of asset')) {
-          activityType = 'investing';
-        } else if (lowerDescription?.includes('loan received') || lowerCategory?.includes('loan')) {
-          activityType = 'financing';
-        } else if (lowerDescription?.includes('owner\'s investment') || lowerCategory?.includes('owner\'s capital')) {
-          activityType = 'financing';
-        } else {
-          activityType = 'operating'; // Default for other income
-        }
+        cashFlowSections[flowType].items.set(itemKey, currentAmount + amount);
+        cashFlowSections[flowType].total += amount;
       } else if (transaction.type === 'expense') {
-        if (lowerCategory === 'cost of goods sold' || lowerCategory === 'salaries and wages expense' || lowerCategory === 'rent expense' || lowerCategory === 'utilities expense' || lowerCategory === 'marketing expense' || lowerCategory === 'repairs & maintenance expense' || lowerCategory === 'bank charges') {
-          activityType = 'operating';
-        } else if (lowerDescription?.includes('purchase of equipment') || lowerDescription?.includes('purchase of vehicle') || lowerCategory?.includes('asset')) {
-          activityType = 'investing';
-        } else if (lowerDescription?.includes('loan repayment') || lowerCategory?.includes('loan payable') || lowerCategory?.includes('credit facility')) {
-          activityType = 'financing';
-        } else if (lowerDescription?.includes('dividends paid') || lowerDescription?.includes('owner\'s drawings')) {
-          activityType = 'financing';
-        } else {
-          activityType = 'operating'; // Default for other expenses
-        }
+        cashFlowSections[flowType].items.set(itemKey, currentAmount - amount); // Expenses reduce cash
+        cashFlowSections[flowType].total -= amount;
       } else if (transaction.type === 'debt') {
-        if (amount > 0) {
-          activityType = 'financing';
-        } else {
-          activityType = 'financing';
-        }
-      }
-
-      const effectiveAmount = (transaction.type === 'income' || (transaction.type === 'debt' && amount > 0)) ? amount : -amount;
-
-      if (activityType === 'operating') {
-        if (operatingActivities[transaction.description]) {
-          operatingActivities[transaction.description] += effectiveAmount;
-        } else {
-          operatingActivities[transaction.description] = effectiveAmount;
-        }
-      } else if (activityType === 'investing') {
-        if (investingActivities[transaction.description]) {
-          investingActivities[transaction.description] += effectiveAmount;
-        } else {
-          investingActivities[transaction.description] = effectiveAmount;
-        }
-      } else if (activityType === 'financing') {
-        if (financingActivities[transaction.description]) {
-          financingActivities[transaction.description] += effectiveAmount;
-        } else {
-          financingActivities[transaction.description] = effectiveAmount;
-        }
+        // Debt can be inflow (loan received) or outflow (loan repaid)
+        // Assuming 'debt' type transactions represent increases in debt (cash inflow)
+        // If it's a repayment, it should be an 'expense' type transaction associated with a debt account
+        cashFlowSections[flowType].items.set(itemKey, currentAmount + amount);
+        cashFlowSections[flowType].total += amount;
       }
     });
 
-    const cashflowStatementStructure: any[] = [];
-    let netCashIncrease = 0;
+    const formattedCashflowData = Object.entries(cashFlowSections).map(([key, section]) => ({
+      category: section.label,
+      items: Array.from(section.items.entries()).map(([item, amount]) => ({
+        item: item,
+        amount: amount,
+        isTotal: false,
+      })),
+      total: section.total,
+      isSectionTotal: true,
+    }));
 
-    // Operating Activities
-    let totalOperating = 0;
-    const operatingItems = Object.keys(operatingActivities).map(desc => {
-      totalOperating += operatingActivities[desc];
-      return { item: desc, amount: operatingActivities[desc] };
-    });
-    cashflowStatementStructure.push({
-      category: 'Operating Activities',
-      items: [...operatingItems, { item: 'Net Cash from Operating Activities', amount: totalOperating, isTotal: true }]
-    });
-    netCashIncrease += totalOperating;
+    const netIncreaseDecrease = formattedCashflowData.reduce((sum, section) => sum + section.total, 0);
 
-    // Investing Activities
-    let totalInvesting = 0;
-    const investingItems = Object.keys(investingActivities).map(desc => {
-      totalInvesting += investingActivities[desc];
-      return { item: desc, amount: investingActivities[desc] };
-    });
-    cashflowStatementStructure.push({
-      category: 'Investing Activities',
-      items: [...investingItems, { item: 'Net Cash from Investing Activities', amount: totalInvesting, isTotal: true }]
-    });
-    netCashIncrease += totalInvesting;
-
-    // Financing Activities
-    let totalFinancing = 0;
-    const financingItems = Object.keys(financingActivities).map(desc => {
-      totalFinancing += financingActivities[desc];
-      return { item: desc, amount: financingActivities[desc] };
-    });
-    cashflowStatementStructure.push({
-      category: 'Financing Activities',
-      items: [...financingItems, { item: 'Net Cash from Financing Activities', amount: totalFinancing, isTotal: true }]
-    });
-    netCashIncrease += totalFinancing;
-
-    cashflowStatementStructure.push({
+    formattedCashflowData.push({
       category: 'Net Increase / (Decrease) in Cash',
-      items: [{ item: 'Net Increase / (Decrease) in Cash', amount: netCashIncrease, isTotal: true }]
+      items: [],
+      total: netIncreaseDecrease,
+      isSectionTotal: true,
     });
 
-    setCashflowData(cashflowStatementStructure);
-
+    setCashflowData(formattedCashflowData);
   }, [allTransactions]);
 
 
-  // --- Static/Sample Data for other tabs (removed as per request) ---
-  // The following data and their corresponding TabsContent have been removed:
-  // sixMonthIncomeData, stocksheetData, debtorsData, creditorsData
-  // The assetRegisterData is now dynamically populated from allAssets.
+  const handleDownload = async () => {
+    if (!token) {
+      toast({
+        title: "Authentication Required",
+        description: "Please log in to download financial documents.",
+        variant: "destructive",
+      });
+      return;
+    }
 
+    if (!selectedDocumentType || !fromDate || !toDate) {
+      toast({
+        title: "Missing Information",
+        description: "Please select a document type and valid dates.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      // Construct the URL for the download
+      const downloadUrl = `${API_BASE_URL}/generate-financial-document?documentType=${selectedDocumentType}&startDate=${fromDate}&endDate=${toDate}`;
+
+      // Open the URL in a new tab, which will trigger the file download
+      window.open(downloadUrl, '_blank');
+
+      toast({
+        title: "Download Initiated",
+        description: `Your ${selectedDocumentType.replace('-', ' ')} is being downloaded.`,
+      });
+
+    } catch (err) {
+      console.error("Error initiating download:", err);
+      toast({
+        title: "Download Failed",
+        description: "There was an error initiating the download. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+
+  if (isLoading) {
+    return <div className="p-8 text-center">Loading financial data...</div>;
+  }
+
+  if (error) {
+    return (
+      <div className="p-8 text-center text-red-500">
+        Error: {error}
+        <Button onClick={fetchAllData} className="ml-4">Retry</Button>
+      </div>
+    );
+  }
 
   return (
-    <div className='flex-1 space-y-4 p-4 md:p-6 lg:p-8'>
-      <Header title='Financials' showActions={false} />
-
+    <div className="min-h-screen bg-gray-100 dark:bg-gray-900 text-gray-900 dark:text-gray-100">
+      <Header />
       <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
-        className='space-y-6'
+        className="container mx-auto p-4 sm:p-6 lg:p-8"
       >
-        {isLoading && (
-          <div className="text-center text-gray-600">Loading financial data...</div>
-        )}
-        {error && (
-          <div className="text-center text-red-600 p-4 border border-red-300 bg-red-50 rounded-md">
-            {error}
-          </div>
-        )}
+        <Button
+          onClick={() => navigate('/dashboard')}
+          className="mb-6 flex items-center"
+          variant="outline"
+        >
+          <ArrowLeft className="h-4 w-4 mr-2" /> Back to Dashboard
+        </Button>
 
-        {/* Report Type Tabs */}
-        <Tabs defaultValue='income-statement' className='w-full'>
-          <TabsList className='grid w-full grid-cols-4 gap-1'> {/* Updated grid-cols to 4 */}
-            {reportTypes.map(report => (
-              <TabsTrigger
-                key={report.id}
-                value={report.id}
-                className='text-xs p-2'
-              >
+        <Card className="mb-6 bg-white dark:bg-gray-800 shadow-lg rounded-lg">
+          <CardHeader>
+            <CardTitle className="text-2xl font-bold text-gray-800 dark:text-gray-200">Financial Reports</CardTitle>
+            <CardDescription className="text-gray-600 dark:text-gray-400">
+              View and generate various financial statements for your business.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-col sm:flex-row items-center space-y-4 sm:space-y-0 sm:space-x-4 mb-6">
+              <div className="flex-1 w-full sm:w-auto">
+                <label htmlFor="fromDate" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  From Date
+                </label>
+                <Input
+                  id="fromDate"
+                  type="date"
+                  value={fromDate}
+                  onChange={(e) => setFromDate(e.target.value)}
+                  className="w-full"
+                />
+              </div>
+              <div className="flex-1 w-full sm:w-auto">
+                <label htmlFor="toDate" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  To Date
+                </label>
+                <Input
+                  id="toDate"
+                  type="date"
+                  value={toDate}
+                  onChange={(e) => setToDate(e.target.value)}
+                  className="w-full"
+                />
+              </div>
+
+              {/* NEW: Document Type Selector and Download Button */}
+              <div className="flex-1 w-full sm:w-auto">
+                <label htmlFor="documentType" className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Document Type
+                </label>
+                <Select onValueChange={setSelectedDocumentType} defaultValue={selectedDocumentType}>
+                  <SelectTrigger className="w-full">
+                    <SelectValue placeholder="Select a document type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {reportTypes.map((report) => (
+                      <SelectItem key={report.id} value={report.id}>
+                        {report.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button onClick={handleDownload} className="w-full sm:w-auto mt-7">
+                Download Report
+              </Button>
+            </div>
+          </CardContent> {/* CORRECTED: Added missing closing tag for CardContent */}
+        </Card> {/* CORRECTED: Added missing closing tag for Card */}
+
+        <Tabs defaultValue="income-statement" className="w-full">
+          <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4">
+            {reportTypes.map((report) => (
+              <TabsTrigger key={report.id} value={report.id}>
                 {report.label}
               </TabsTrigger>
             ))}
           </TabsList>
 
-          {/* Period Selection (for dynamic reports) */}
-          <Card className="mt-4">
-              <CardHeader>
-                <CardTitle>Select Reporting Period</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <div className='flex flex-col sm:flex-row gap-4 items-end'>
-                  <div className='grid grid-cols-2 gap-4 flex-1'>
-                    <div>
-                      <label className='text-sm font-medium mb-2 block'>
-                        From
-                      </label>
-                      <Input
-                        type='date'
-                        value={fromDate}
-                        onChange={e => setFromDate(e.target.value)}
-                      />
-                    </div>
-                    <div>
-                      <label className='text-sm font-medium mb-2 block'>
-                        To
-                      </label>
-                      <Input
-                        type='date'
-                        value={toDate}
-                        onChange={e => setToDate(e.target.value)}
-                      />
-                    </div>
-                  </div>
-                  {/* Button to re-fetch/re-calculate, though useEffect handles it */}
-                  <Button onClick={fetchAllData} disabled={isLoading} className='bg-purple-600 hover:bg-purple-700'>
-                    {isLoading ? 'Loading...' : 'Refresh Data'}
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-
-          {/* Trial Balance Tab (Dynamic) */}
-          <TabsContent value='trial-balance' className='space-y-6'>
+          {/* Income Statement Tab */}
+          <TabsContent value="income-statement" className="mt-4">
             <Card>
               <CardHeader>
-                <CardTitle>Trial Balance</CardTitle>
+                <CardTitle className="text-xl">Income Statement</CardTitle>
                 <CardDescription>
-                  As at {new Date(toDate).toLocaleDateString('en-ZA')}
+                  For the period{' '}
+                  {new Date(fromDate).toLocaleDateString('en-ZA')} to{' '}
+                  {new Date(toDate).toLocaleDateString('en-ZA')}
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Item</TableHead>
+                      <TableHead className="text-right">Amount (R)</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {incomeStatementData.map((item, index) => (
+                      <TableRow key={index} className={item.type === 'total' || item.type === 'subtotal' ? 'font-bold border-t-2 border-b-2' : ''}>
+                        <TableCell className={item.type === 'detail-expense' ? 'pl-8' : ''}>{item.item}</TableCell>
+                        <TableCell className="text-right">{formatCurrency(item.amount)}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Trial Balance Tab */}
+          <TabsContent value="trial-balance" className="mt-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-xl">Trial Balance</CardTitle>
+                <CardDescription>
+                  For the period{' '}
+                  {new Date(fromDate).toLocaleDateString('en-ZA')} to{' '}
+                  {new Date(toDate).toLocaleDateString('en-ZA')}
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -645,35 +746,25 @@ const Financials = () => {
                   <TableHeader>
                     <TableRow>
                       <TableHead>Account</TableHead>
-                      <TableHead className='text-right'>Debit (R)</TableHead>
-                      <TableHead className='text-right'>Credit (R)</TableHead>
+                      <TableHead className="text-right">Debit (R)</TableHead>
+                      <TableHead className="text-right">Credit (R)</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {trialBalanceData.map((item, index) => (
                       <TableRow key={index}>
-                        <TableCell className='font-medium'>
-                          {item.account}
-                        </TableCell>
-                        <TableCell className='text-right'>
-                          {formatCurrency(item.debit)}
-                        </TableCell>
-                        <TableCell className='text-right'>
-                          {formatCurrency(item.credit)}
-                        </TableCell>
+                        <TableCell>{item.account}</TableCell>
+                        <TableCell className="text-right">{formatCurrency(item.debit)}</TableCell>
+                        <TableCell className="text-right">{formatCurrency(item.credit)}</TableCell>
                       </TableRow>
                     ))}
-                    <TableRow className='font-bold border-t-2'>
+                    <TableRow className="font-bold border-t-2">
                       <TableCell>TOTALS</TableCell>
-                      <TableCell className='text-right'>
-                        {formatCurrency(
-                          trialBalanceData.reduce((sum, item) => sum + item.debit, 0)
-                        )}
+                      <TableCell className="text-right">
+                        {formatCurrency(trialBalanceData.reduce((sum, item) => sum + item.debit, 0))}
                       </TableCell>
-                      <TableCell className='text-right'>
-                        {formatCurrency(
-                          trialBalanceData.reduce((sum, item) => sum + item.credit, 0)
-                        )}
+                      <TableCell className="text-right">
+                        {formatCurrency(trialBalanceData.reduce((sum, item) => sum + item.credit, 0))}
                       </TableCell>
                     </TableRow>
                   </TableBody>
@@ -682,129 +773,107 @@ const Financials = () => {
             </Card>
           </TabsContent>
 
-          {/* Income Statement Tab (Dynamic) */}
-          <TabsContent value='income-statement' className='space-y-6'>
+          {/* Balance Sheet Tab */}
+          <TabsContent value="balance-sheet" className="mt-4">
             <Card>
               <CardHeader>
-                <CardTitle>Income Statement</CardTitle>
+                <CardTitle className="text-xl">Balance Sheet</CardTitle>
                 <CardDescription>
-                  For the period{' '}
-                  {new Date(fromDate).toLocaleDateString('en-ZA')} to{' '}
-                  {new Date(toDate).toLocaleDateString('en-ZA')}
+                  As of {new Date(toDate).toLocaleDateString('en-ZA')}
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <div className='space-y-4'>
-                  {incomeStatementData.map((item, index) => (
-                    <div
-                      key={index}
-                      className={`flex justify-between items-center py-2 ${
-                        item.type === 'total'
-                          ? 'border-t-2 border-b-2 font-bold text-lg'
-                          : item.type === 'subtotal'
-                          ? 'border-t border-b font-semibold'
-                          : item.type === 'detail-expense'
-                          ? 'text-sm text-gray-700'
-                          : 'border-b border-gray-200'
-                      }`}
-                    >
-                      <span className={item.type === 'detail-expense' ? 'ml-8' : item.type === 'expense' ? 'ml-4' : ''}>
-                        {item.item}
-                      </span>
-                      <span className='font-mono'>
-                        {formatCurrency(item.amount)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          {/* Balance Sheet Tab (Dynamic) */}
-          <TabsContent value='balance-sheet' className='space-y-6'>
-            <Card>
-              <CardHeader>
-                <CardTitle>Balance Sheet</CardTitle>
-                <CardDescription>
-                  As at {new Date(toDate).toLocaleDateString('en-ZA')}
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className='grid grid-cols-1 md:grid-cols-2 gap-8'>
+                <div className="space-y-6">
+                  {/* Assets */}
                   <div>
-                    <h3 className='font-semibold text-lg mb-4'>ASSETS</h3>
-                    <div className='space-y-2'>
-                      {balanceSheetData.assets.map((item, index) => (
-                        <div
-                          key={index}
-                          className={`flex justify-between ${
-                            item.isTotal ? 'font-bold border-t pt-2' : ''
-                          }`}
-                        >
+                    <h3 className="font-semibold text-lg mb-3">ASSETS</h3>
+                    <div className="space-y-2 ml-4">
+                      <h4 className="font-medium text-md">Current Assets</h4>
+                      {balanceSheetData.assets.filter((item: any) => !item.isTotal && (item.item === 'Cash and Bank' || item.item === 'Accounts Receivable' || item.item === 'Inventory')).map((item: any, itemIndex: number) => (
+                        <div key={`ca-${itemIndex}`} className="flex justify-between py-1">
                           <span>{item.item}</span>
-                          <span className='font-mono'>
-                            {formatCurrency(item.amount)}
-                          </span>
+                          <span className="font-mono">{formatCurrency(item.amount)}</span>
                         </div>
                       ))}
+                      <div className="flex justify-between py-1 font-bold border-t pt-2">
+                        <span>Total Current Assets</span>
+                        <span className="font-mono">{formatCurrency(balanceSheetData.assets.find((item: any) => item.item === 'Total Current Assets')?.amount)}</span>
+                      </div>
+
+                      <h4 className="font-medium text-md mt-4">Non-Current Assets</h4>
+                      {balanceSheetData.assets.filter((item: any) => !item.isTotal && item.item !== 'Cash and Bank' && item.item !== 'Accounts Receivable' && item.item !== 'Inventory').map((item: any, itemIndex: number) => (
+                        <div key={`nca-${itemIndex}`} className="flex justify-between py-1">
+                          <span>{item.item}</span>
+                          <span className="font-mono">{formatCurrency(item.amount)}</span>
+                        </div>
+                      ))}
+                      <div className="flex justify-between py-1 font-bold border-t pt-2">
+                        <span>Total Non-Current Assets</span>
+                        <span className="font-mono">{formatCurrency(balanceSheetData.assets.find((item: any) => item.item === 'Total Non-Current Assets')?.amount)}</span>
+                      </div>
+                      <div className="flex justify-between py-1 font-bold border-t-2 pt-2 text-lg">
+                        <span>TOTAL ASSETS</span>
+                        <span className="font-mono">{formatCurrency(balanceSheetData.assets.find((item: any) => item.item === 'TOTAL ASSETS')?.amount)}</span>
+                      </div>
                     </div>
                   </div>
 
+                  {/* Liabilities */}
                   <div>
-                    <h3 className='font-semibold text-lg mb-4'>
-                      LIABILITIES & EQUITY
-                    </h3>
-                    <div className='space-y-4'>
-                      <div>
-                        <h4 className='font-medium mb-2'>Liabilities</h4>
-                        <div className='space-y-1 ml-4'>
-                          {balanceSheetData.liabilities.map((item, index) => (
-                            <div
-                              key={index}
-                              className={`flex justify-between ${
-                                item.isTotal ? 'font-bold border-t pt-2' : ''
-                              }`}
-                            >
-                              <span>{item.item}</span>
-                              <span className='font-mono'>
-                                {formatCurrency(item.amount)}
-                              </span>
-                            </div>
-                          ))}
+                    <h3 className="font-semibold text-lg mb-3 mt-6">LIABILITIES</h3>
+                    <div className="space-y-2 ml-4">
+                      <h4 className="font-medium text-md">Current Liabilities</h4>
+                      {balanceSheetData.liabilities.filter((item: any) => !item.isTotal && (item.item === 'Accounts Payable' || item.item === 'Short-term Debt')).map((item: any, itemIndex: number) => (
+                        <div key={`cl-${itemIndex}`} className="flex justify-between py-1">
+                          <span>{item.item}</span>
+                          <span className="font-mono">{formatCurrency(item.amount)}</span>
                         </div>
+                      ))}
+                      <div className="flex justify-between py-1 font-bold border-t pt-2">
+                        <span>Total Current Liabilities</span>
+                        <span className="font-mono">{formatCurrency(balanceSheetData.liabilities.find((item: any) => item.item === 'Total Current Liabilities')?.amount)}</span>
                       </div>
 
-                      <div>
-                        <h4 className='font-medium mb-2'>Equity</h4>
-                        <div className='space-y-1 ml-4'>
-                          {balanceSheetData.equity.map((item, index) => (
-                            <div
-                              key={index}
-                              className={`flex justify-between ${
-                                item.isTotal ? 'font-bold border-t pt-2' : ''
-                              }`}
-                            >
-                              <span>{item.item}</span>
-                              <span className='font-mono'>
-                                {formatCurrency(item.amount)}
-                              </span>
-                            </div>
-                          ))}
+                      <h4 className="font-medium text-md mt-4">Non-Current Liabilities</h4>
+                      {balanceSheetData.liabilities.filter((item: any) => !item.isTotal && item.item === 'Long-term Debt').map((item: any, itemIndex: number) => (
+                        <div key={`ncl-${itemIndex}`} className="flex justify-between py-1">
+                          <span>{item.item}</span>
+                          <span className="font-mono">{formatCurrency(item.amount)}</span>
                         </div>
+                      ))}
+                      <div className="flex justify-between py-1 font-bold border-t pt-2">
+                        <span>Total Non-Current Liabilities</span>
+                        <span className="font-mono">{formatCurrency(balanceSheetData.liabilities.find((item: any) => item.item === 'Total Non-Current Liabilities')?.amount)}</span>
                       </div>
+                      <div className="flex justify-between py-1 font-bold border-t-2 pt-2 text-lg">
+                        <span>TOTAL LIABILITIES</span>
+                        <span className="font-mono">{formatCurrency(balanceSheetData.liabilities.find((item: any) => item.item === 'TOTAL LIABILITIES')?.amount)}</span>
+                      </div>
+                    </div>
+                  </div>
 
-                      <div className='border-t-2 pt-2 font-bold'>
-                        <div className='flex justify-between'>
-                          <span>TOTAL LIABILITIES & EQUITY</span>
-                          <span className='font-mono'>
-                            {formatCurrency(
-                              (balanceSheetData.liabilities.find(item => item.isTotal)?.amount || 0) +
-                              (balanceSheetData.equity.find(item => item.isTotal)?.amount || 0)
-                            )}
-                          </span>
+                  {/* Equity */}
+                  <div>
+                    <h3 className="font-semibold text-lg mb-3 mt-6">EQUITY</h3>
+                    <div className="space-y-2 ml-4">
+                      {balanceSheetData.equity.filter((item: any) => !item.isTotal).map((item: any, itemIndex: number) => (
+                        <div key={`eq-${itemIndex}`} className="flex justify-between py-1">
+                          <span>{item.item}</span>
+                          <span className="font-mono">{formatCurrency(item.amount)}</span>
                         </div>
+                      ))}
+                      <div className="flex justify-between py-1 font-bold border-t-2 pt-2 text-lg">
+                        <span>TOTAL EQUITY</span>
+                        <span className="font-mono">{formatCurrency(balanceSheetData.equity.find((item: any) => item.item === 'TOTAL EQUITY')?.amount)}</span>
                       </div>
+                      {/* Check if Assets = Liabilities + Equity */}
+                      {balanceSheetData.assets.find((item: any) => item.item === 'TOTAL ASSETS')?.amount !==
+                        (balanceSheetData.liabilities.find((item: any) => item.item === 'TOTAL LIABILITIES')?.amount || 0) +
+                        (balanceSheetData.equity.find((item: any) => item.item === 'TOTAL EQUITY')?.amount || 0) && (
+                          <div className="text-red-500 font-bold mt-4">
+                            Balance Sheet is out of balance! Total Assets do not equal Total Liabilities + Total Equity.
+                          </div>
+                        )}
                     </div>
                   </div>
                 </div>
@@ -812,11 +881,11 @@ const Financials = () => {
             </Card>
           </TabsContent>
 
-          {/* Cashflow Statement Tab (Dynamic) */}
-          <TabsContent value='cashflow' className='space-y-6'>
+          {/* Cashflow Statement Tab */}
+          <TabsContent value="cash-flow-statement" className="mt-4">
             <Card>
               <CardHeader>
-                <CardTitle>Cash Flow Statement</CardTitle>
+                <CardTitle className="text-xl">Cash Flow Statement</CardTitle>
                 <CardDescription>
                   For the period{' '}
                   {new Date(fromDate).toLocaleDateString('en-ZA')} to{' '}

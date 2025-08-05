@@ -17,6 +17,7 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import Projections from './pages/Projections';
 import Accounting from './pages/Accounting';
 import PersonelSetup from './pages/PersonelSetup';
+import UserManagementPage from './pages/UserManagementPage';
 import PayrollDashboard from './components/payroll/PayrollDashboard';
 import { DocumentManagement } from './pages/DocumentManagement';
 import { FinancialsProvider } from './contexts/FinancialsContext';
@@ -61,7 +62,7 @@ const AppContent = () => {
             <Route path="/quant-chat" element={<PrivateRoute><QuantChat /></PrivateRoute>} />
             <Route path="/projections" element={<PrivateRoute><Projections /></PrivateRoute>} />
             <Route path="/accounting" element={<PrivateRoute><Accounting /></PrivateRoute>} />
-
+            <Route path="/user-management" element={<PrivateRoute><UserManagementPage /></PrivateRoute>} />
             {/* NEW: POS and its nested routes, all protected */}
             <Route path="/pos" element={<PrivateRoute><POSScreen /></PrivateRoute>} />
             <Route path="/pos/products" element={<PrivateRoute><ProductsPage /></PrivateRoute>} />

@@ -43,6 +43,16 @@ import { Label } from '@/components/ui/label';
 import { Header } from '@/components/layout/Header';
 import { Badge } from '@/components/ui/badge';
 import { useAuth } from '../AuthPage'; // Import useAuth
+import { SearchableAccountSelect } from '../components/SearchableAccountSelect';
+import { SearchableCategorySelect } from '../components/SearchableCategorySelect';
+
+
+declare global {
+  interface Window {
+    webkitSpeechRecognition: any;
+    SpeechRecognition: any;
+  }
+}
 
 // Define interfaces
 interface Transaction {
@@ -69,6 +79,15 @@ interface Account {
   type: string;
 }
 
+
+
+const isDuplicateTransaction = (newTx, existingTxs) => {
+  return existingTxs.some(existing =>
+    existing.amount === newTx.amount &&
+    existing.date === newTx.date &&
+    existing.description?.trim().toLowerCase() === newTx.description?.trim().toLowerCase()
+  );
+};
 // ===========================================
 // SUGGESTION FUNCTION FOR FILE UPLOADS (PDF)
 // ===========================================
@@ -400,6 +419,7 @@ const suggestAccountForText = (
 };
 
 // --- EditableTransactionTable Component ---
+// --- EditableTransactionTable Component ---
 const EditableTransactionTable = ({ transactions: initialTransactions, accounts, categories, onConfirm, onCancel }) => {
   const [transactions, setTransactions] = useState(initialTransactions);
   const [editingRowId, setEditingRowId] = useState(null);
@@ -477,7 +497,12 @@ const EditableTransactionTable = ({ transactions: initialTransactions, accounts,
                       className="w-[200px]"
                     />
                   ) : (
-                    transaction.description
+                    <>
+                      {transaction.description}
+                      {transaction.duplicateFlag && (
+                        <Badge variant="destructive" className="ml-2">Duplicate?</Badge>
+                      )}
+                    </>
                   )}
                 </TableCell>
                 <TableCell>
@@ -494,38 +519,22 @@ const EditableTransactionTable = ({ transactions: initialTransactions, accounts,
                 </TableCell>
                 <TableCell>
                   {editingRowId === (transaction.id || transaction._tempId) ? (
-                    <Select
+                    <SearchableCategorySelect
                       value={transaction.category}
-                      onValueChange={(value) => handleTransactionChange(transaction.id || transaction._tempId, 'category', value)}
-                    >
-                      <SelectTrigger className="w-[150px]">
-                        <SelectValue placeholder="Category" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {categories.map((cat) => (
-                          <SelectItem key={cat} value={cat}>{cat}</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                      onChange={(val) => handleTransactionChange(transaction.id || transaction._tempId, 'category', val)}
+                      categories={categories}
+                    />
                   ) : (
                     transaction.category
                   )}
                 </TableCell>
                 <TableCell>
                   {editingRowId === (transaction.id || transaction._tempId) ? (
-                    <Select
+                    <SearchableAccountSelect
                       value={transaction.account_id}
-                      onValueChange={(value) => handleTransactionChange(transaction.id || transaction._tempId, 'account_id', value)}
-                    >
-                      <SelectTrigger className="w-[150px]">
-                        <SelectValue placeholder="Account" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {(accounts || []).map((account) => (
-                          <SelectItem key={account.id} value={String(account.id)}>{account.name} ({account.type})</SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                      onChange={(val) => handleTransactionChange(transaction.id || transaction._tempId, 'account_id', val)}
+                      accounts={accounts}
+                    />
                   ) : (
                     accounts.find(acc => String(acc.id) === String(transaction.account_id))?.name || 'N/A'
                   )}
@@ -587,10 +596,11 @@ const EditableTransactionTable = ({ transactions: initialTransactions, accounts,
   );
 };
 
+
 // --- Main ChatInterface Component ---
 const ChatInterface = () => {
   const RAIRO_API_BASE_URL = 'https://rairo-stmt-api.hf.space';
-  const API_BASE_URL = 'https://quantnow.onrender.com';
+  const API_BASE_URL = 'http://localhost:3000';
 
   const [messages, setMessages] = useState<Array<{ id: string; sender: string; content: string | JSX.Element }>>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -598,6 +608,9 @@ const ChatInterface = () => {
   const [file, setFile] = useState<File | null>(null);
   const [isRecording, setIsRecording] = useState(false);
   const [audioBlob, setAudioBlob] = useState<Blob | null>(null);
+  const recognitionRef = useRef<any>(null);
+  const [transcribedText, setTranscribedText] = useState('');
+
   const [audioUrl, setAudioUrl] = useState<string | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
@@ -957,36 +970,45 @@ const ChatInterface = () => {
     }
   };
 
-  const startRecording = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      mediaRecorderRef.current = new MediaRecorder(stream);
-      audioChunksRef.current = [];
+const startRecording = () => {
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
-      mediaRecorderRef.current.ondataavailable = (event) => {
-        audioChunksRef.current.push(event.data);
-      };
+  if (!SpeechRecognition) {
+    addAssistantMessage('Browser does not support speech recognition. Try Chrome.');
+    return;
+  }
 
-      mediaRecorderRef.current.onstop = () => {
-        const blob = new Blob(audioChunksRef.current, { type: 'audio/wav' });
-        setAudioBlob(blob);
-        setAudioUrl(URL.createObjectURL(blob));
-        if (audioPlayerRef.current) {
-          audioPlayerRef.current.src = '';
-          audioPlayerRef.current.load();
-          audioPlayerRef.current.src = URL.createObjectURL(blob);
-        }
-        stream.getTracks().forEach(track => track.stop());
-      };
+  const recognition = new SpeechRecognition();
+  recognition.lang = 'en-US';
+  recognition.continuous = false;
+  recognition.interimResults = false;
 
-      mediaRecorderRef.current.start();
-      setIsRecording(true);
-      addUserMessage('Started audio recording...');
-    } catch (err: any) {
-      console.error('Error accessing microphone:', err);
-      addAssistantMessage('Failed to access microphone. Please check permissions.');
-    }
+  recognition.onstart = () => {
+    setIsRecording(true);
+    addUserMessage('Started voice input...');
   };
+
+  recognition.onresult = (event: any) => {
+    const transcript = event.results[0][0].transcript;
+    setTranscribedText(transcript);
+    setTypedDescription(transcript);
+    addUserMessage(`🗣️ "${transcript}"`);
+    handleTypedDescriptionSubmit();
+  };
+
+  recognition.onerror = (event: any) => {
+    console.error('Speech recognition error:', event);
+    addAssistantMessage(`Speech recognition error: ${event.error}`);
+  };
+
+  recognition.onend = () => {
+    setIsRecording(false);
+  };
+
+  recognitionRef.current = recognition;
+  recognition.start();
+};
+
 
   const stopRecording = () => {
     if (mediaRecorderRef.current && isRecording) {
@@ -1144,12 +1166,12 @@ const ChatInterface = () => {
 
     setIsGeneratingDocument(true); // Set loading state
     addUserMessage(`Please generate a ${selectedDocumentType} for the period ${documentStartDate} to ${documentEndDate}.`);
-    addAssistantMessage(
-      <div className="p-4 bg-blue-100 rounded-md shadow-sm flex items-center">
-        <Loader2 className="h-5 w-5 animate-spin mr-2 text-blue-600" />
-        <p className="font-semibold">Generating your financial document...</p>
-      </div>
-    );
+addAssistantMessage(
+  <div className="p-4 bg-blue-100 rounded-md shadow-sm">
+    <p className="font-semibold text-blue-800">Generating your financial document...</p>
+  </div>
+);
+
 
     try {
       const downloadUrl = `${API_BASE_URL}/generate-financial-document?documentType=${selectedDocumentType}&startDate=${documentStartDate}&endDate=${documentEndDate}`;

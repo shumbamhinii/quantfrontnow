@@ -14,172 +14,185 @@ import {
 } from 'antd';
 import { UserOutlined, SearchOutlined } from '@ant-design/icons';
 import { useAuth } from '../../AuthPage'; // Import useAuth
+import axios from 'axios';
 
 const { Title, Text } = Typography;
 
-// Hardcoded Data for Demonstration
+// A simple debounce utility function to replace the lodash import
+const debounce = (func: (...args: any[]) => void, delay: number) => {
+  let timeout: NodeJS.Timeout | null;
+  return function(...args: any[]) {
+    const context = this;
+    if (timeout) {
+      clearTimeout(timeout);
+    }
+    timeout = setTimeout(() => {
+      func.apply(context, args);
+    }, delay);
+  };
+};
+
+
+// IMPORTANT: Replace with your actual backend API URL
+const API_BASE_URL = 'http://localhost:3000';
+
+// --- Updated Interfaces to match Backend (public.customers, public.sales) ---
 interface CustomerBackend {
-  id: string;
+  id: number;
   name: string;
   email: string;
   phone?: string;
   address?: string;
   tax_id?: string;
   total_invoiced: number;
+  balance_due: number; // From public.customers
 }
 
-interface InvoiceBackend {
-  id: string;
-  customer_id: string;
-  customer_name: string;
-  invoice_date: string;
-  due_date: string;
+interface SaleBackend {
+  id: number; // Sale ID
+  customer_id: number; // Customer ID
+  customer_name: string; // From JOIN in backend
   total_amount: number;
-  amount_paid: number;
-  status: 'Pending' | 'Paid' | 'Overdue' | 'Partially Paid';
-  company_name: string;
-  created_at: string;
-  updated_at: string;
+  payment_method: 'Cash' | 'Credit' | 'Bank'; // Renamed from payment_type to match the backend
+  remaining_credit_amount: number; // From public.sales
+  due_date: string | null;
+  sale_date: string; // Renamed from created_at to match the backend
 }
-
-const HARDCODED_CUSTOMERS: CustomerBackend[] = [
-  { id: 'cust1', name: 'Alice Johnson', email: 'alice@example.com', total_invoiced: 1200 },
-  { id: 'cust2', name: 'Bob Williams', email: 'bob@example.com', total_invoiced: 800 },
-  { id: 'cust3', name: 'Charlie Brown', email: 'charlie@example.com', total_invoiced: 2500 },
-];
-
-const HARDCODED_INVOICES: InvoiceBackend[] = [
-  { id: 'inv1', customer_id: 'cust1', customer_name: 'Alice Johnson', invoice_date: '2025-07-01T00:00:00Z', due_date: '2025-07-15T00:00:00Z', total_amount: 500, amount_paid: 200, status: 'Partially Paid', company_name: 'Ngenge Stores', created_at: '', updated_at: '' },
-  { id: 'inv2', customer_id: 'cust1', customer_name: 'Alice Johnson', invoice_date: '2025-06-20T00:00:00Z', due_date: '2025-07-05T00:00:00Z', total_amount: 700, amount_paid: 0, status: 'Overdue', company_name: 'Ngenge Stores', created_at: '', updated_at: '' },
-  { id: 'inv3', customer_id: 'cust2', customer_name: 'Bob Williams', invoice_date: '2025-07-10T00:00:00Z', due_date: '2025-07-25T00:00:00Z', total_amount: 800, amount_paid: 0, status: 'Pending', company_name: 'Ngenge Stores', created_at: '', updated_at: '' },
-  { id: 'inv4', customer_id: 'cust3', customer_name: 'Charlie Brown', invoice_date: '2025-07-05T00:00:00Z', due_date: '2025-07-20T00:00:00Z', total_amount: 1000, amount_paid: 1000, status: 'Paid', company_name: 'Ngenge Stores', created_at: '', updated_at: '' },
-  { id: 'inv5', customer_id: 'cust3', customer_name: 'Charlie Brown', invoice_date: '2025-07-20T00:00:00Z', due_date: '2025-08-05T00:00:00Z', total_amount: 1500, amount_paid: 0, status: 'Pending', company_name: 'Ngenge Stores', created_at: '', updated_at: '' },
-];
-
-type Credit = {
-  id: string; // Invoice ID
-  name: string; // Customer Name
-  amountDue: number; // total_amount - amount_paid (for current payments) or total_amount (for history)
-  paidAmount: number; // amount_paid
-  dueDate: string; // invoice_date or due_date depending on what you want to show
-  creditScore: number; // This will be a dummy value as there's no direct API for it
-};
 
 const CreditPaymentsScreen: React.FC = () => {
   const [messageApi, contextHolder] = message.useMessage();
   const [tab, setTab] = useState<'payments' | 'history'>('payments');
-  const [credits, setCredits] = useState<Credit[]>([]);
+  const [outstandingCredits, setOutstandingCredits] = useState<SaleBackend[]>([]);
+  const [historyCredits, setHistoryCredits] = useState<SaleBackend[]>([]);
   const [loading, setLoading] = useState(true);
-  const [selectedCredit, setSelectedCredit] = useState<Credit | null>(null);
-  const [selectedCustomer, setSelectedCustomer] = useState<string | null>(null);
-  const [paymentAmount, setPaymentAmount] = useState('');
+  const [selectedCredit, setSelectedCredit] = useState<SaleBackend | null>(null);
+  const [selectedCustomer, setSelectedCustomer] = useState<CustomerBackend | null>(null);
+  const [paymentAmount, setPaymentAmount] = useState<string>('');
   const [modalVisible, setModalVisible] = useState(false);
   const [customerModal, setCustomerModal] = useState(false);
   const [searchText, setSearchText] = useState('');
-  const [customersList, setCustomersList] = useState<CustomerBackend[]>([]); // For customer selection in history tab
+  const [customersList, setCustomersList] = useState<CustomerBackend[]>([]);
 
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, user } = useAuth();
+  const token = localStorage.getItem('token');
 
-  // Helper to simulate authentication check for UI enablement
-  const isUserAuthenticated = isAuthenticated;
+  const getAuthHeaders = useCallback(() => {
+    return token ? { 'Authorization': `Bearer ${token}` } : {};
+  }, [token]);
 
-  // Simulate fetching all invoices (as credits)
-  const fetchCredits = useCallback(async () => {
-    setLoading(true);
-    // Simulate API call delay
-    const timer = setTimeout(() => {
-      if (isUserAuthenticated) {
-        const activeCredits: Credit[] = HARDCODED_INVOICES
-          .filter((invoice) => invoice.status !== 'Paid' && (invoice.total_amount - invoice.amount_paid) > 0)
-          .map((invoice) => ({
-            id: invoice.id,
-            name: invoice.customer_name,
-            amountDue: invoice.total_amount, // Original total amount
-            paidAmount: invoice.amount_paid,
-            dueDate: invoice.due_date.split('T')[0], // Format to YYYY-MM-DD
-            creditScore: Math.floor(Math.random() * 30) + 60, // Dummy credit score (60-90)
-          }));
-        setCredits(activeCredits);
-        messageApi.success('Credits loaded successfully (hardcoded).');
-      } else {
-        setCredits([]);
-        messageApi.warning('Please log in to load credits.');
-      }
-      setLoading(false);
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [isUserAuthenticated, messageApi]);
+  // --- API Fetching Functions ---
 
-  // Simulate fetching all customers for the history tab dropdown
   const fetchCustomers = useCallback(async () => {
-    // Simulate API call delay
-    const timer = setTimeout(() => {
-      if (isUserAuthenticated) {
-        setCustomersList(HARDCODED_CUSTOMERS);
-        messageApi.success('Customers loaded successfully (hardcoded).');
-      } else {
+    setLoading(true);
+    try {
+      if (!isAuthenticated || !token) {
+        messageApi.warning('Please log in to load customers.');
         setCustomersList([]);
+        return;
       }
-    }, 500);
-    return () => clearTimeout(timer);
-  }, [isUserAuthenticated, messageApi]);
+      const response = await axios.get<CustomerBackend[]>(
+        `${API_BASE_URL}/api/customers`,
+        { headers: getAuthHeaders() }
+      );
+      setCustomersList(response.data.sort((a, b) => a.name.localeCompare(b.name)));
+    } catch (error) {
+      console.error('Failed to fetch customers:', error);
+      messageApi.error('Failed to load customers.');
+      setCustomersList([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [isAuthenticated, token, getAuthHeaders, messageApi]);
 
-  useEffect(() => {
-    fetchCredits();
-    fetchCustomers();
-  }, [fetchCredits, fetchCustomers]);
+  const fetchCreditSales = useCallback(async () => {
+    setLoading(true);
+    try {
+      if (!isAuthenticated || !token) {
+        messageApi.warning('Please log in to load credits.');
+        setOutstandingCredits([]);
+        setLoading(false);
+        return;
+      }
+      const response = await axios.get<SaleBackend[]>(
+        `${API_BASE_URL}/api/credit-sales`,
+        { headers: getAuthHeaders() }
+      );
+      
+      if (response.data.length === 0) {
+        console.warn('API returned an empty array for credit sales.');
+      }
+      
+      setOutstandingCredits(response.data);
+      messageApi.success('Credit sales loaded successfully.');
+    } catch (error) {
+      console.error('Failed to fetch credit sales:', error);
+      messageApi.error('Failed to load credit sales. Please check your backend API.');
+      setOutstandingCredits([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [isAuthenticated, token, getAuthHeaders, messageApi]);
 
-  // Customers (derived from fetched customersList)
-  const customers = customersList.map(c => c.name?.trim()).sort();
-  const filteredCustomers = customers.filter(c =>
-    c?.toLowerCase().includes(searchText.toLowerCase())
+  const fetchCustomerCreditHistory = useCallback(async () => {
+    if (!selectedCustomer?.id || !isAuthenticated || !token) {
+      setHistoryCredits([]);
+      return;
+    }
+    setLoading(true);
+    try {
+      const response = await axios.get<SaleBackend[]>(
+        `${API_BASE_URL}/api/sales/customer/${selectedCustomer.id}/credit-history`,
+        { headers: getAuthHeaders() }
+      );
+
+      // The backend should now return numbers, but we'll do an extra check to be safe
+      const sanitizedData = response.data.map(item => ({
+        ...item,
+        total_amount: parseFloat(item.total_amount as any),
+        remaining_credit_amount: parseFloat(item.remaining_credit_amount as any),
+      }));
+
+      setHistoryCredits(sanitizedData.sort((a, b) => new Date(b.sale_date).getTime() - new Date(a.sale_date).getTime()));
+      messageApi.success(`Credit history for ${selectedCustomer.name} loaded.`);
+    } catch (error) {
+      console.error('Failed to fetch customer credit history:', error);
+      messageApi.error(`Failed to load credit history for ${selectedCustomer.name}.`);
+      setHistoryCredits([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedCustomer, isAuthenticated, token, getAuthHeaders, messageApi]);
+
+  // Use debounce to prevent excessive API calls while typing
+  const debouncedSetSearchText = useCallback(
+    debounce((text: string) => {
+      setSearchText(text);
+    }, 300),
+    []
   );
 
-  // Filtered credits for history tab (all invoices for selected customer)
-  const filteredCreditsHistory = useCallback(async () => {
-    if (!selectedCustomer || !isUserAuthenticated) {
-      return [];
-    }
-    // Simulate API call delay
-    return new Promise<Credit[]>(resolve => {
-      setTimeout(() => {
-        const customer = HARDCODED_CUSTOMERS.find(c => c.name?.trim().toLowerCase() === selectedCustomer.trim().toLowerCase());
-        if (!customer) {
-          resolve([]);
-          return;
-        }
-
-        const customerInvoices = HARDCODED_INVOICES.filter(inv => inv.customer_id === customer.id);
-        const historyData: Credit[] = customerInvoices
-          .map((invoice) => ({
-            id: invoice.id,
-            name: invoice.customer_name,
-            amountDue: invoice.total_amount, // For history, show total original amount
-            paidAmount: invoice.amount_paid,
-            dueDate: invoice.due_date.split('T')[0],
-            creditScore: Math.floor(Math.random() * 30) + 60, // Dummy credit score
-          }))
-          .sort((a, b) => new Date(b.dueDate).getTime() - new Date(a.dueDate).getTime());
-        resolve(historyData);
-      }, 300); // Simulate network delay
-    });
-  }, [selectedCustomer, isUserAuthenticated]);
-
-  const [historyCredits, setHistoryCredits] = useState<Credit[]>([]);
   useEffect(() => {
-    if (tab === 'history') {
-      setLoading(true);
-      filteredCreditsHistory().then(data => {
-        setHistoryCredits(data);
-        setLoading(false);
-      });
+    if (tab === 'payments') {
+      fetchCreditSales();
+    } else if (tab === 'history') {
+      fetchCustomers();
     }
-  }, [tab, selectedCustomer, filteredCreditsHistory]);
+  }, [tab, fetchCreditSales, fetchCustomers]);
 
+  useEffect(() => {
+    if (tab === 'history' && selectedCustomer) {
+      fetchCustomerCreditHistory();
+    } else if (tab === 'history' && !selectedCustomer) {
+      setHistoryCredits([]);
+    }
+  }, [tab, selectedCustomer, fetchCustomerCreditHistory]);
 
-  // Payment logic (simulated)
-  const openModal = (credit: Credit) => {
-    if (!isUserAuthenticated) {
+  const filteredCustomers = customersList.filter(c =>
+    c.name?.toLowerCase().includes(searchText.toLowerCase())
+  );
+
+  const openModal = (credit: SaleBackend) => {
+    if (!isAuthenticated) {
       messageApi.error('Authentication required to make payments.');
       return;
     }
@@ -189,7 +202,7 @@ const CreditPaymentsScreen: React.FC = () => {
   };
 
   const handlePayment = async () => {
-    if (!selectedCredit || !isUserAuthenticated) {
+    if (!selectedCredit || !isAuthenticated || !token) {
       messageApi.error('Authentication or credit not selected.');
       return;
     }
@@ -197,57 +210,53 @@ const CreditPaymentsScreen: React.FC = () => {
     if (
       !payAmount ||
       payAmount <= 0 ||
-      payAmount > (selectedCredit.amountDue - selectedCredit.paidAmount)
+      payAmount > selectedCredit.remaining_credit_amount
     ) {
-      messageApi.warning('Invalid payment amount');
+      messageApi.warning('Invalid payment amount or exceeds remaining balance.');
       return;
     }
 
-    setLoading(true); // Set loading for payment process
-    // Simulate API call delay
-    const timer = setTimeout(() => {
-      // Simulate updating the hardcoded data (for demonstration purposes, this won't persist)
-      const updatedInvoices = HARDCODED_INVOICES.map(inv => {
-        if (inv.id === selectedCredit.id) {
-          const newPaidAmount = inv.amount_paid + payAmount;
-          const newStatus = newPaidAmount >= inv.total_amount ? 'Paid' : 'Partially Paid';
-          return { ...inv, amount_paid: newPaidAmount, status: newStatus };
-        }
-        return inv;
-      });
-      // In a real app, you'd send this update to your backend.
+    setLoading(true);
+    try {
+      // --- FIX: Corrected API endpoint to credit-payments ---
+      await axios.post(
+        `${API_BASE_URL}/api/credit-payments`,
+        {
+          customerId: selectedCredit.customer_id,
+          saleId: selectedCredit.id,
+          amountPaid: payAmount,
+          paymentMethod: 'Cash', // This could be a dynamic user selection
+          description: `Payment for Sale ID ${selectedCredit.id}`,
+          recordedBy: user?.name,
+        },
+        { headers: getAuthHeaders() }
+      );
 
-      messageApi.success('Payment recorded successfully! (Simulated)');
+      messageApi.success('Payment recorded successfully!');
       setModalVisible(false);
       setSelectedCredit(null);
-      fetchCredits(); // Re-fetch credits to update the list
-      if (tab === 'history') { // Also update history if currently on that tab
-        filteredCreditsHistory().then(setHistoryCredits);
+      // Refresh the data after a successful payment
+      fetchCreditSales();
+      if (tab === 'history' && selectedCustomer) {
+        fetchCustomerCreditHistory();
       }
+    } catch (error) {
+      console.error('Error making payment:', error);
+      messageApi.error('Failed to record payment.');
+    } finally {
       setLoading(false);
-    }, 1000);
-    return () => clearTimeout(timer);
+    }
   };
 
-  // Credit score color
-  const getCreditScoreColor = (score: number) => {
-    if (score >= 75) return 'green';
-    if (score >= 70) return 'gold';
-    return 'red';
-  };
-
-  // Due status chip
-  const dueStatus = (credit: Credit): [string, string] => {
+  const dueStatus = (credit: SaleBackend): [string, string] => {
+    if (credit.remaining_credit_amount <= 0) return ['Paid', 'blue'];
+    if (!credit.due_date) return ['On Time', 'green'];
     const today = new Date().toISOString().slice(0, 10);
-    const remainingDue = credit.amountDue - credit.paidAmount;
-
-    if (remainingDue <= 0) return ['Paid', 'blue'];
-    if (credit.dueDate < today) return ['Overdue', 'red'];
-    if (credit.dueDate === today) return ['Due Today', 'gold'];
+    if (credit.due_date < today) return ['Overdue', 'red'];
+    if (credit.due_date === today) return ['Due Today', 'gold'];
     return ['On Time', 'green'];
   };
 
-  // Responsive Card Style
   const cardStyle: React.CSSProperties = {
     marginBottom: 16,
     background: '#fff',
@@ -268,8 +277,8 @@ const CreditPaymentsScreen: React.FC = () => {
           activeKey={tab}
           onChange={(key) => {
             setTab(key as 'payments' | 'history');
-            setSelectedCustomer(null); // Reset selected customer when changing tabs
-            setSearchText(''); // Reset search text
+            setSelectedCustomer(null);
+            setSearchText('');
           }}
           centered
           items={[
@@ -285,18 +294,15 @@ const CreditPaymentsScreen: React.FC = () => {
               <div style={{ textAlign: 'center', marginTop: 40 }}>
                 <Spin />
               </div>
-            ) : credits.length === 0 ? (
+            ) : outstandingCredits.length === 0 ? (
               <Text
                 type='secondary'
                 style={{ display: 'block', marginTop: 40, textAlign: 'center' }}
               >
-                No outstanding credits found.
+                No outstanding credit sales found.
               </Text>
             ) : (
-              credits.map((credit) => {
-                const remainingDue = (
-                  credit.amountDue - credit.paidAmount
-                ).toFixed(2);
+              outstandingCredits.map((credit) => {
                 const [status, color] = dueStatus(credit);
                 return (
                   <Card
@@ -308,20 +314,14 @@ const CreditPaymentsScreen: React.FC = () => {
                     <Row align='middle' wrap={false}>
                       <Col flex='auto'>
                         <Text strong style={{ color: '#111' }}>
-                          {credit.name}
+                          {credit.customer_name}
                         </Text>
                         <div>
-                          Amount Due: <b>R{remainingDue}</b>
+                          Amount Due: <b>R{credit.remaining_credit_amount.toFixed(2)}</b>
                         </div>
-                        <div>Due: {credit.dueDate}</div>
+                        <div>Due: {credit.due_date ? credit.due_date.split('T')[0] : 'N/A'}</div>
                       </Col>
                       <Col>
-                        <Tag
-                          color={getCreditScoreColor(credit.creditScore)}
-                          style={{ marginBottom: 5 }}
-                        >
-                          {credit.creditScore}
-                        </Tag>
                         <Tag color={color}>{status}</Tag>
                       </Col>
                     </Row>
@@ -340,7 +340,7 @@ const CreditPaymentsScreen: React.FC = () => {
                   marginBottom: 16,
                 }}
                 onClick={() => {
-                  if (isUserAuthenticated) {
+                  if (isAuthenticated) {
                     setCustomerModal(true);
                   } else {
                     messageApi.error('Authentication required to select customers.');
@@ -351,7 +351,7 @@ const CreditPaymentsScreen: React.FC = () => {
                   <Col>
                     <UserOutlined style={{ fontSize: 18, marginRight: 8 }} />
                     {selectedCustomer
-                      ? `Customer: ${selectedCustomer}`
+                      ? `Customer: ${selectedCustomer.name}`
                       : 'Select Customer'}
                   </Col>
                   <Col flex='auto' style={{ textAlign: 'right' }}>
@@ -361,37 +361,40 @@ const CreditPaymentsScreen: React.FC = () => {
               </Card>
 
               {/* Credit History */}
-              {loading ? (
+              {loading && selectedCustomer ? (
                 <div style={{ textAlign: 'center', marginTop: 40 }}>
                   <Spin />
                 </div>
               ) : selectedCustomer && historyCredits.length > 0 ? (
                 historyCredits.map((c) => {
                   const [status, color] = dueStatus(c);
+                  const paidAmount = c.total_amount - c.remaining_credit_amount;
                   return (
                     <Card
-                      key={`${c.id}-${c.dueDate}`}
+                      key={`${c.id}-${c.sale_date}`}
                       style={cardStyle}
+                      onClick={() => openModal(c)}
                       styles={{ body: { padding: 16 } }}
                     >
                       <Row align='middle' wrap={false}>
                         <Col flex='auto'>
-                          <Text strong>{c.name}</Text>
+                          <Text strong>{c.customer_name}</Text>
                           <div>
-                            Original Amount: <b>R{c.amountDue.toFixed(2)}</b>
+                            Original Amount: <b>R{c.total_amount.toFixed(2)}</b>
                           </div>
                           <div>
-                            Paid: <b>R{c.paidAmount.toFixed(2)}</b>
+                            Paid: <b>R{paidAmount.toFixed(2)}</b>
                           </div>
-                          <div>Due Date: {c.dueDate}</div>
+                          <div>
+                            Due Date: {c.due_date ? c.due_date.split('T')[0] : 'N/A'}
+                          </div>
+                          {c.remaining_credit_amount > 0 && (
+                            <div>
+                              Remaining: <b>R{c.remaining_credit_amount.toFixed(2)}</b>
+                            </div>
+                          )}
                         </Col>
                         <Col>
-                          <Tag
-                            color={getCreditScoreColor(c.creditScore)}
-                            style={{ marginBottom: 5 }}
-                          >
-                            {c.creditScore}
-                          </Tag>
                           <Tag color={color}>{status}</Tag>
                         </Col>
                       </Row>
@@ -422,39 +425,32 @@ const CreditPaymentsScreen: React.FC = () => {
           centered
           footer={null}
           onCancel={() => setModalVisible(false)}
-          destroyOnClose
+          destroyOnHidden
           width={340}
           styles={{ body: { padding: 24 } }}
         >
           {selectedCredit && (
             <>
               <Title level={5} style={{ marginBottom: 4 }}>
-                Pay {selectedCredit.name}
+                Pay {selectedCredit.customer_name}
               </Title>
               <Text>
                 Remaining:{' '}
-                <b>
-                  R
-                  {(
-                    selectedCredit.amountDue - selectedCredit.paidAmount
-                  ).toFixed(2)}
-                </b>
+                <b>R{selectedCredit.remaining_credit_amount.toFixed(2)}</b>
               </Text>
               <div style={{ margin: '12px 0' }}>
-                <Tag color={getCreditScoreColor(selectedCredit.creditScore)}>
-                  {selectedCredit.creditScore}
-                </Tag>
               </div>
               <Input
                 type='number'
-                placeholder='Payment Amount'
+                placeholder={`Enter amount (max R${selectedCredit.remaining_credit_amount.toFixed(2)})`}
                 value={paymentAmount}
                 onChange={(e) => setPaymentAmount(e.target.value)}
                 style={{ margin: '12px 0 6px 0' }}
                 min={0}
-                disabled={!isUserAuthenticated || loading}
+                max={selectedCredit.remaining_credit_amount}
+                disabled={!isAuthenticated || loading}
               />
-              <Button type='primary' block onClick={handlePayment} disabled={!isUserAuthenticated || loading}>
+              <Button type='primary' block onClick={handlePayment} disabled={!isAuthenticated || loading}>
                 Confirm Payment
               </Button>
             </>
@@ -467,7 +463,7 @@ const CreditPaymentsScreen: React.FC = () => {
           centered
           footer={null}
           onCancel={() => setCustomerModal(false)}
-          destroyOnClose
+          destroyOnHidden
           width={340}
           styles={{ body: { padding: 20 } }}
         >
@@ -478,29 +474,37 @@ const CreditPaymentsScreen: React.FC = () => {
             placeholder='Search by name...'
             value={searchText}
             allowClear
-            onChange={(e) => setSearchText(e.target.value)}
+            onChange={(e) => debouncedSetSearchText(e.target.value)}
             style={{ marginBottom: 10 }}
-            disabled={!isUserAuthenticated}
+            disabled={!isAuthenticated}
           />
           <div style={{ maxHeight: 250, overflowY: 'auto' }}>
-            {filteredCustomers.map((item) => (
-              <Card
-                key={item}
-                style={{ marginBottom: 8, cursor: 'pointer', padding: 8 }}
-                styles={{ body: { padding: 10 } }}
-                onClick={() => {
-                  if (isUserAuthenticated) {
-                    setSelectedCustomer(item);
-                    setCustomerModal(false);
-                  } else {
-                    messageApi.error('Authentication required to select customers.');
-                  }
-                }}
-              >
-                <Text>{item}</Text>
-              </Card>
-            ))}
-            {!filteredCustomers.length && (
+            {filteredCustomers.length > 0 ? (
+              filteredCustomers.map((item) => (
+                <Card
+                  key={item.id}
+                  style={{ marginBottom: 8, cursor: 'pointer', padding: 8 }}
+                  styles={{ body: { padding: 10 } }}
+                  onClick={() => {
+                    if (isAuthenticated) {
+                      setSelectedCustomer(item);
+                      setCustomerModal(false);
+                      setHistoryCredits([]);
+                      setLoading(true);
+                    } else {
+                      messageApi.error('Authentication required to select customers.');
+                    }
+                  }}
+                >
+                  <Text>{item.name}</Text>
+                  {item.balance_due > 0 && (
+                    <Text type="secondary" style={{ marginLeft: 8 }}>
+                      (Due: R{item.balance_due.toFixed(2)})
+                    </Text>
+                  )}
+                </Card>
+              ))
+            ) : (
               <Text type='secondary'>No customers found.</Text>
             )}
           </div>

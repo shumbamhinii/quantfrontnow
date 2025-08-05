@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   Tabs,
   Select,
@@ -13,106 +13,21 @@ import {
   Modal,
   Table,
   InputNumber,
-  Tag,
   Col,
   Row,
   Spin,
 } from 'antd';
 import { useMediaQuery } from 'react-responsive';
 import POSDashboard from '../../pages/POSDashboard';
-import type { Product } from '../../types/type';
 import { useAuth } from '../../AuthPage';
-
-// Explicitly import each icon to resolve potential bundling issues
+import type { Product } from '../../types/type';
 import PlusOutlined from '@ant-design/icons/lib/icons/PlusOutlined';
 import EditOutlined from '@ant-design/icons/lib/icons/EditOutlined';
 import DeleteOutlined from '@ant-design/icons/lib/icons/DeleteOutlined';
 import UploadOutlined from '@ant-design/icons/lib/icons/UploadOutlined';
-
 import ReceiptProductUploader from './ProductReceiptUpload';
 
-
-// Hardcoded Data for Demonstration
-const HARDCODED_PRODUCTS: Product[] = [
-  {
-    id: 'prod1',
-    name: 'Laptop Pro X',
-    type: 'product',
-    price: 15000.00,
-    unitPrice: 15000.00,
-    purchasePrice: 12000.00,
-    unitPurchasePrice: 12000.00,
-    qty: 10,
-    minQty: 5,
-    maxQty: 20,
-    unit: 'units',
-    companyName: 'Ngenge Stores',
-  },
-  {
-    id: 'prod2',
-    name: 'Premium Coffee Beans',
-    type: 'product',
-    price: 120.50,
-    unitPrice: 120.50,
-    purchasePrice: 80.00,
-    unitPurchasePrice: 80.00,
-    qty: 50,
-    minQty: 10,
-    maxQty: 100,
-    unit: 'bags',
-    companyName: 'Ngenge Stores',
-  },
-  {
-    id: 'serv1',
-    name: 'Software Consultation (Hr)',
-    type: 'service',
-    price: 800.00,
-    unitPrice: 800.00,
-    availableValue: 100, // Example for services
-    companyName: 'Ngenge Stores',
-  },
-  {
-    id: 'prod3',
-    name: 'Ergonomic Chair',
-
-    type: 'product',
-    price: 3500.00,
-    unitPrice: 3500.00,
-    purchasePrice: 2800.00,
-    unitPurchasePrice: 2800.00,
-    qty: 5,
-    minQty: 2,
-    maxQty: 10,
-    unit: 'units',
-    companyName: 'Ngenge Stores',
-  },
-  {
-    id: 'serv2',
-    name: 'Website Development',
-    type: 'service',
-    price: 25000.00,
-    unitPrice: 25000.00,
-    availableValue: 5, // Another hardcoded service
-    companyName: 'Ngenge Stores',
-  },
-  {
-    id: 'serv3',
-    name: 'IT Support (Monthly)',
-    type: 'service',
-    price: 1500.00,
-    unitPrice: 1500.00,
-    availableValue: 20, // Another hardcoded service
-    companyName: 'Ngenge Stores',
-  }
-];
-
-const HARDCODED_SALES_DATA: any[] = [ // Simplified sales data for bestsellers calculation
-  { cart: [{ id: 'prod1', quantity: 3 }, { id: 'prod2', quantity: 10 }] },
-  { cart: [{ id: 'prod1', quantity: 1 }, { id: 'serv1', quantity: 5 }] },
-  { cart: [{ id: 'prod2', quantity: 15 }] },
-];
-
-
+// Define ProductFormValues type again for clarity, as it's used in handleSave
 type ProductFormValues = {
   name: string;
   type: 'product' | 'service';
@@ -120,46 +35,39 @@ type ProductFormValues = {
   purchasePrice?: number | string;
   unit?: string;
   qty?: number;
-  minQty?: number;
-  maxQty?: number;
+  minQty?: number; // Added based on the previous layout
+  maxQty?: number; // Added based on the previous layout
   availableValue?: number;
 };
 
-// This hook will now use hardcoded sales data
+// This hook is no longer needed with real backend sales data, but keeping its structure for now if you plan to fetch stats differently
+// For now, it will return an empty object or you'll fetch bestsellers from the backend if available.
 function useProductSalesStats(products: Product[], isAuthenticated: boolean, messageApi: any) {
   const [bestsellers, setBestsellers] = useState<{ [id: string]: number }>({});
 
+  // In a real application, you would fetch sales statistics from your backend here.
+  // For now, this will just return an empty object unless you add a backend endpoint for sales stats.
   useEffect(() => {
     if (!isAuthenticated) {
       setBestsellers({});
       return;
     }
+    // Simulate fetching sales stats from a backend if you had an endpoint for it.
+    // Example:
+    // fetch('http://localhost:3000/sales/bestsellers', { /* headers */ })
+    //     .then(res => res.json())
+    //     .then(data => setBestsellers(data))
+    //     .catch(err => messageApi.error('Failed to fetch sales stats'));
 
-    // Simulate API call delay
-    const timer = setTimeout(() => {
-      const productSales: { [key: string]: number } = {};
-
-      for (const sale of HARDCODED_SALES_DATA) {
-        if (Array.isArray(sale.cart)) {
-          for (const item of sale.cart) {
-            const id = item.id;
-            if (!id) continue;
-            productSales[id] = (productSales[id] || 0) + (item.quantity || 0);
-          }
-        }
-      }
-      setBestsellers(productSales);
-      messageApi.success('Sales statistics loaded successfully (hardcoded).');
-    }, 500);
-    return () => clearTimeout(timer);
+    // For now, returning an empty object as there's no backend endpoint defined for it in the provided code
+    setBestsellers({});
   }, [isAuthenticated, products.length, messageApi]);
 
   return bestsellers;
 }
 
 const ProductsPage = () => {
-  const { isAuthenticated } = useAuth(); // Only get isAuthenticated from context
-
+  const { isAuthenticated } = useAuth();
   const [messageApi, contextHolder] = message.useMessage();
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
@@ -176,11 +84,9 @@ const ProductsPage = () => {
   const [formType, setFormType] = useState<'product' | 'service'>('product');
   const isMobile = useMediaQuery({ maxWidth: 767 });
 
-  // Helper to simulate authentication check for UI enablement
+  // Helper to check authentication for UI enablement
   const isUserAuthenticated = isAuthenticated;
 
-
-  // Simulate fetching products
   const fetchProducts = useCallback(async () => {
     if (!isUserAuthenticated) {
       setLoading(false);
@@ -188,15 +94,40 @@ const ProductsPage = () => {
       messageApi.warning('Please log in to load products.');
       return;
     }
-
     setLoading(true);
-    // Simulate API call delay
-    const timer = setTimeout(() => {
-      setProducts(HARDCODED_PRODUCTS);
-      messageApi.success('Products loaded successfully (hardcoded).');
+    try {
+      const res = await fetch('http://localhost:3000/products-services', {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('token')}`,
+        },
+      });
+      if (!res.ok) throw new Error('Failed to fetch');
+      const data = await res.json();
+      const transformed: Product[] = data.map((p: any) => ({
+        id: p.id,
+        name: p.name,
+        type: p.is_service ? 'service' : 'product',
+        price: p.unit_price,
+        unitPrice: p.unit_price,
+        purchasePrice: p.cost_price,
+        unitPurchasePrice: p.cost_price,
+        qty: p.stock_quantity,
+        unit: p.unit,
+        companyName: 'Ngenge Stores', // Assuming this is set on the frontend or comes from backend
+        availableValue: p.is_service ? p.stock_quantity : undefined,
+        // Assuming minQty and maxQty are not currently in your backend response for this mapping,
+        // if they are, you'll need to add them to the mapping.
+        minQty: p.min_stock_quantity, // Placeholder - adjust if your backend provides this
+        maxQty: p.max_stock_quantity, // Placeholder - adjust if your backend provides this
+      }));
+      setProducts(transformed);
+      messageApi.success('Products loaded successfully.');
+    } catch (err) {
+      console.error("Failed to fetch products:", err);
+      messageApi.error('Error loading products. Please ensure the backend is running and you are logged in.');
+    } finally {
       setLoading(false);
-    }, 500);
-    return () => clearTimeout(timer);
+    }
   }, [isUserAuthenticated, messageApi]);
 
   useEffect(() => {
@@ -222,12 +153,12 @@ const ProductsPage = () => {
       } else {
         // Add mode
         form.resetFields();
-        form.setFieldsValue({ type: 'product' });
+        form.setFieldsValue({ type: 'product' }); // Default to product
         setFormType('product');
       }
     }
     // eslint-disable-next-line
-  }, [modalVisible, manualDrawerOpen, editingProduct]);
+  }, [modalVisible, manualDrawerOpen, editingProduct]); // form is intentionally excluded from dependencies to avoid infinite loops
 
   // Always reset everything on close
   const closeForm = () => {
@@ -238,7 +169,6 @@ const ProductsPage = () => {
     setFormType('product');
   };
 
-  // Use this for both Add and Edit. For Add: openForm(null)
   const openForm = (record: Product | null = null) => {
     if (!isUserAuthenticated) {
       messageApi.error('Please log in to manage products.');
@@ -249,30 +179,91 @@ const ProductsPage = () => {
     else setModalVisible(true);
   };
 
-  // Simulate Delete product
+  const handleSave = async (values: ProductFormValues) => {
+    if (!isUserAuthenticated) {
+      messageApi.error('Authentication required to save products. Please ensure you are logged in.');
+      return;
+    }
+    setLoading(true);
+    const isNew = !editingProduct;
+    const endpoint = isNew
+      ? 'http://localhost:3000/products-services'
+      : `http://localhost:3000/products-services/${editingProduct!.id}`; // Use ! as editingProduct is guaranteed if not new
+
+    const method = isNew ? 'POST' : 'PUT';
+
+    try {
+      const body = {
+        name: values.name,
+        description: '', // You might want to add a description field to your form/type
+        unit_price: Number(values.sellingPrice),
+        cost_price: values.type === 'product' ? Number(values.purchasePrice || 0) : null,
+        is_service: values.type === 'service',
+        stock_quantity: values.type === 'product'
+          ? Number(values.qty || 0)
+          : Number(values.availableValue || 0),
+        unit: values.type === 'product' ? (values.unit || 'item') : null,
+        sku: null, // You might want to add an SKU field
+        min_stock_quantity: values.type === 'product' ? Number(values.minQty || 0) : null,
+        max_stock_quantity: values.type === 'product' ? Number(values.maxQty || 0) : null,
+      };
+
+      const res = await fetch(endpoint, {
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${localStorage.getItem('token')}`,
+        },
+        body: JSON.stringify(body),
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.message || 'Failed to save');
+      }
+      messageApi.success(`Product ${isNew ? 'added' : 'updated'} successfully.`);
+      closeForm();
+      fetchProducts();
+    } catch (err: any) {
+      console.error("Save product error:", err);
+      messageApi.error(`Failed to save product: ${err.message || 'Unknown error'}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const handleDelete = async (id: string) => {
     if (!isUserAuthenticated) {
       messageApi.error('Authentication required to delete products.');
       return;
     }
-    setLoading(true);
-    const timer = setTimeout(() => {
-      const updatedProducts = products.filter(p => p.id !== id);
-      setProducts(updatedProducts);
-      messageApi.success('Product deleted successfully! (Simulated)');
+    try {
+      setLoading(true);
+      const res = await fetch(`http://localhost:3000/products-services/${id}`, {
+        method: 'DELETE',
+        headers: { Authorization: `Bearer ${localStorage.getItem('token')}` },
+      });
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.message || 'Failed to delete');
+      }
+      messageApi.success('Deleted successfully.');
+      fetchProducts();
+    } catch (err: any) {
+      console.error("Delete product error:", err);
+      messageApi.error(`Failed to delete: ${err.message || 'Unknown error'}`);
+    } finally {
       setLoading(false);
-    }, 500);
-    return () => clearTimeout(timer);
+    }
   };
 
-  // Simulate Restock product
   const openRestockModal = (product: Product) => {
     if (!isUserAuthenticated) {
       messageApi.error('Please log in to restock products.');
       return;
     }
     setRestockProduct(product);
-    restockForm.resetFields();
+    restockForm.resetFields(); // Clear previous values
     setRestockModalVisible(true);
   };
 
@@ -281,69 +272,38 @@ const ProductsPage = () => {
       messageApi.error('Authentication or product information missing for restock.');
       return;
     }
-
-    setLoading(true);
-    const timer = setTimeout(() => {
-      const updatedProducts = products.map(p => {
-        if (p.id === restockProduct.id) {
-          return {
-            ...p,
-            qty: (p.qty ?? 0) + values.qty,
-            purchasePrice: values.purchasePrice, // Update purchase price
-            unitPurchasePrice: values.purchasePrice, // Assuming same
-          };
+    try {
+      setLoading(true);
+      // Assuming your backend endpoint for stock adjustment is products-services/:id/stock
+      // and it accepts adjustmentQuantity and updatedCostPrice (if changing)
+      const res = await fetch(
+        `http://localhost:3000/products-services/${restockProduct.id}/stock`,
+        {
+          method: 'PUT', // Or POST, depending on your API design for stock adjustments
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${localStorage.getItem('token')}`,
+          },
+          body: JSON.stringify({
+            adjustmentQuantity: values.qty,
+            updatedCostPrice: values.purchasePrice, // Send the new purchase price
+          }),
         }
-        return p;
-      });
-      setProducts(updatedProducts);
-      messageApi.success('Product restocked successfully! (Simulated)');
+      );
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.message || 'Failed to restock');
+      }
+      messageApi.success('Product restocked successfully!');
       setRestockModalVisible(false);
       setRestockProduct(null);
+      fetchProducts(); // Refresh products list
+    } catch (err: any) {
+      console.error("Restock product error:", err);
+      messageApi.error(`Failed to restock: ${err.message || 'Unknown error'}`);
+    } finally {
       setLoading(false);
-    }, 1000);
-    return () => clearTimeout(timer);
-  };
-
-  // Simulate Add or Edit product
-  const handleSave = async (values: ProductFormValues) => {
-    if (!isUserAuthenticated) {
-      messageApi.error('Authentication required to save products. Please ensure you are logged in.');
-      return;
     }
-
-    setLoading(true);
-    const timer = setTimeout(() => {
-      const isNew = !editingProduct;
-      const newId = isNew ? `${values.type === 'product' ? 'prod' : 'serv'}${products.length + 1}` : editingProduct!.id;
-
-      const newProduct: Product = {
-        id: newId,
-        name: values.name,
-        type: values.type,
-        price: typeof values.sellingPrice === 'number' ? values.sellingPrice : parseFloat(values.sellingPrice),
-        unitPrice: typeof values.sellingPrice === 'number' ? values.sellingPrice : parseFloat(values.sellingPrice),
-        companyName: 'Ngenge Stores', // Hardcoded company name
-        // Set other fields based on type and input
-        qty: values.type === 'product' ? (values.qty || 0) : 0,
-        minQty: values.type === 'product' ? (values.minQty || 0) : undefined,
-        maxQty: values.type === 'product' ? (values.maxQty || 0) : undefined,
-        unit: values.type === 'product' ? (values.unit || 'item') : undefined,
-        purchasePrice: values.type === 'product' ? (typeof values.purchasePrice === 'number' ? values.purchasePrice : parseFloat(values.purchasePrice || '0')) : undefined,
-        unitPurchasePrice: values.type === 'product' ? (typeof values.purchasePrice === 'number' ? values.purchasePrice : parseFloat(values.purchasePrice || '0')) : undefined,
-        availableValue: values.type === 'service' ? (values.availableValue || 0) : undefined,
-      };
-
-      if (isNew) {
-        setProducts([...products, newProduct]);
-      } else {
-        setProducts(products.map(p => (p.id === newProduct.id ? newProduct : p)));
-      }
-
-      messageApi.success(`Product ${isNew ? 'added' : 'updated'} successfully! (Simulated)`);
-      closeForm();
-      setLoading(false);
-    }, 1000);
-    return () => clearTimeout(timer);
   };
 
   // Pass isAuthenticated only to useProductSalesStats
@@ -355,7 +315,15 @@ const ProductsPage = () => {
   const filteredProducts = sortedProducts.filter(p =>
     p.name?.toLowerCase().includes(search.toLowerCase())
   );
-  
+
+  // Define a formatter function for currency inputs
+  const currencyFormatter = (value: number | string | undefined) =>
+    `R ${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+
+  // Define a parser function to remove the currency symbol and commas
+  const currencyParser = (value: string | undefined) =>
+    value ? value.replace(/\R\s?|(,*)/g, '') : '';
+
   const productColumns = [
     { title: 'Name', dataIndex: 'name', key: 'name' },
     { title: 'Type', dataIndex: 'type', key: 'type' },
@@ -417,7 +385,7 @@ const ProductsPage = () => {
       title: 'Available Value',
       dataIndex: 'availableValue',
       key: 'availableValue',
-      render: val => (val ? `${val} hours` : '-'),
+      render: val => (val ? `${val} hours` : '-'), // Assuming "hours" is a common unit for services
     },
     {
       title: 'Actions',
@@ -450,7 +418,15 @@ const ProductsPage = () => {
       onFinish={handleSave}
       initialValues={{ type: formType }}
       onValuesChange={(changed, all) => {
-        if (changed.type) setFormType(changed.type);
+        if (changed.type) {
+          setFormType(changed.type);
+          // Explicitly reset fields that are not applicable to the new type
+          if (changed.type === 'product') {
+            form.setFieldsValue({ availableValue: undefined });
+          } else if (changed.type === 'service') {
+            form.setFieldsValue({ qty: undefined, unit: undefined, purchasePrice: undefined, minQty: undefined, maxQty: undefined });
+          }
+        }
       }}
     >
       <Form.Item
@@ -458,7 +434,7 @@ const ProductsPage = () => {
         label='Type'
         rules={[{ required: true, message: 'Please select Type' }]}
       >
-        <Select placeholder='Select type'>
+        <Select placeholder='Select type' disabled={!!editingProduct}> {/* Disable type change on edit */}
           <Select.Option value='product'>Product</Select.Option>
           <Select.Option value='service'>Service</Select.Option>
         </Select>
@@ -470,10 +446,9 @@ const ProductsPage = () => {
       >
         <Input placeholder='Enter name' />
       </Form.Item>
-      {/* For products, show selling & purchase price side by side (add only).
-          For edit, just show selling price (purchase price can be edited on restock) */}
-      {formType === 'product' && !editingProduct ? (
-        <Form.Item required>
+
+      {formType === 'product' ? ( // Always show both for products, regardless of editing mode
+        <Form.Item required style={{ marginBottom: 0 }}>
           <Row gutter={12}>
             <Col span={12}>
               <Form.Item
@@ -482,7 +457,7 @@ const ProductsPage = () => {
                 rules={[{ required: true }]}
                 style={{ marginBottom: 0 }}
               >
-                <InputNumber min={0} style={{ width: '100%' }} />
+                <InputNumber min={0} style={{ width: '100%' }} formatter={currencyFormatter} parser={currencyParser} />
               </Form.Item>
             </Col>
             <Col span={12}>
@@ -492,7 +467,7 @@ const ProductsPage = () => {
                 rules={[{ required: true }]}
                 style={{ marginBottom: 0 }}
               >
-                <InputNumber min={0} style={{ width: '100%' }} />
+                <InputNumber min={0} style={{ width: '100%' }} formatter={currencyFormatter} parser={currencyParser} />
               </Form.Item>
             </Col>
           </Row>
@@ -503,19 +478,19 @@ const ProductsPage = () => {
           label='Selling Price'
           rules={[{ required: true }]}
         >
-          <InputNumber min={0} style={{ width: '100%' }} />
+          <InputNumber min={0} style={{ width: '100%' }} formatter={currencyFormatter} parser={currencyParser} />
         </Form.Item>
       )}
 
       {formType === 'product' && (
         <>
-          <Form.Item name='unit' label='Unit' rules={[{ required: true }]}>
+          <Form.Item name='unit' label='Unit' rules={[{ required: true, message: 'Please enter unit' }]}>
             <Input placeholder='e.g. kg, litre, box' />
           </Form.Item>
-          <Form.Item name='qty' label='Quantity'>
+          <Form.Item name='qty' label='Quantity (Initial Stock)'> {/* Changed label for clarity on new product */}
             <InputNumber min={0} style={{ width: '100%' }} />
           </Form.Item>
-          <Form.Item required>
+          <Form.Item required style={{ marginBottom: 0 }}>
             <Row gutter={12}>
               <Col span={12}>
                 <Form.Item
@@ -753,6 +728,7 @@ const ProductsPage = () => {
           onClose={closeForm}
           placement='bottom'
           height='auto'
+          styles={{ body: { paddingBottom: 80 } }} // Add padding for submit button
         >
           {renderForm()}
         </Drawer>
@@ -779,6 +755,7 @@ const ProductsPage = () => {
         >
           <ReceiptProductUploader
             onClose={() => setImportDrawerOpen(false)}
+            onImportSuccess={fetchProducts} // Call fetchProducts after successful import
           />
         </Drawer>
       </div>
@@ -792,19 +769,19 @@ const ProductsPage = () => {
           <Form.Item
             name='qty'
             label='Quantity to Add'
-            rules={[{ required: true }]}
+            rules={[{ required: true, message: 'Please enter quantity' }]}
           >
             <InputNumber min={1} style={{ width: '100%' }} />
           </Form.Item>
           <Form.Item
             name='purchasePrice'
-            label='Purchase Price (total price)'
-            rules={[{ required: true }]}
+            label='Purchase Price (new unit cost, optional)' // Clarified label as it updates unitPurchasePrice
+            rules={[{ required: true, message: 'Please enter purchase price' }]}
           >
-            <InputNumber min={0} style={{ width: '100%' }} />
+            <InputNumber min={0} style={{ width: '100%' }} formatter={currencyFormatter} parser={currencyParser} />
           </Form.Item>
           <Form.Item>
-            <Button type='primary' htmlType='submit' block disabled={!isUserAuthenticated}>
+            <Button type='primary' htmlType='submit' block disabled={!isUserAuthenticated || loading}>
               Restock
             </Button>
           </Form.Item>

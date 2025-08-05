@@ -97,7 +97,7 @@ const Transactions = () => {
     }
 
     try {
-      const response = await fetch(`https://quantnow.onrender.com/transactions?${queryParams.toString()}`, {
+      const response = await fetch(`http://localhost:3000/transactions?${queryParams.toString()}`, {
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`, // Include the JWT token
@@ -134,7 +134,7 @@ const Transactions = () => {
         return;
       }
       try {
-        const response = await fetch('https://quantnow.onrender.com/accounts', { // Assuming /api/accounts is also secured
+        const response = await fetch('http://localhost:3000/accounts', { // Assuming /api/accounts is also secured
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`, // Include the JWT token
@@ -197,7 +197,7 @@ const Transactions = () => {
     }
 
     try {
-      const response = await fetch(`https://quantnow.onrender.com/transactions/manual`, { // Assuming /api/transactions/manual is also secured
+      const response = await fetch(`http://localhost:3000/transactions/manual`, { // Assuming /api/transactions/manual is also secured
         method: 'POST', // Or PUT/PATCH if it's an update-specific endpoint
         headers: {
           'Content-Type': 'application/json',

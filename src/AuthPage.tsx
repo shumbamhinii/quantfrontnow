@@ -17,7 +17,10 @@ interface AuthContextType {
   isAuthenticated: boolean;
   login: () => void;
   logout: () => void;
+  userRole: string | null;
+  userName: string | null;
 }
+
 
 const AuthContext = React.createContext<AuthContextType | undefined>(undefined);
 
@@ -34,19 +37,38 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.getItem('isAuthenticated') === 'true'
   );
 
+  const [userRole, setUserRole] = useState<string | null>(
+    localStorage.getItem('userRole')
+  );
+
+  const [userName, setUserName] = useState<string | null>(
+    localStorage.getItem('userName')
+  );
+
   const login = () => {
     setIsAuthenticated(true);
+    setUserRole(localStorage.getItem('userRole'));
+    setUserName(localStorage.getItem('userName'));
     localStorage.setItem('isAuthenticated', 'true');
   };
 
   const logout = () => {
     setIsAuthenticated(false);
-    localStorage.removeItem('isAuthenticated');
-    localStorage.removeItem('token');
+    setUserRole(null);
+    setUserName(null);
+    localStorage.clear();
   };
 
   return (
-    <AuthContext.Provider value={{ isAuthenticated, login, logout }}>
+    <AuthContext.Provider
+      value={{
+        isAuthenticated,
+        login,
+        logout,
+        userRole,
+        userName,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );
@@ -74,8 +96,8 @@ export function AuthPage() {
     try {
       const endpoint =
         mode === 'login'
-          ? 'https://quantnow.onrender.com/login'
-          : 'https://quantnow.onrender.com/register';
+          ? 'http://localhost:3000/login'
+          : 'http://localhost:3000/register';
 
       const payload =
         mode === 'login'
@@ -92,14 +114,27 @@ export function AuthPage() {
 
       if (res.ok) {
         if (mode === 'login') {
-          localStorage.setItem('token', data.token);
-          login();
-          toast({
-            title: '✅ Login Successful',
-            description: 'Welcome back!',
-          });
-          navigate('/');
-        } else {
+  const user = data.user;
+  const companyId = user.parent_user_id || user.user_id;
+
+  // Store everything in localStorage
+  localStorage.setItem('token', data.token);
+  localStorage.setItem('isAuthenticated', 'true');
+  localStorage.setItem('userId', user.user_id);
+  localStorage.setItem('companyId', companyId);
+  localStorage.setItem('userRole', user.role || 'user');
+  localStorage.setItem('userName', user.name || '');
+
+  login();
+
+  toast({
+    title: '✅ Login Successful',
+    description: `Welcome back, ${user.name || 'User'}!`,
+  });
+
+  navigate('/');
+}
+ else {
           toast({
             title: '✅ Registration Successful',
             description: 'You can now log in.',
@@ -215,3 +250,9 @@ export function AuthPage() {
     </div>
   );
 }
+
+export const getUserId = () => localStorage.getItem('userId');
+export const getCompanyId = () => localStorage.getItem('companyId');
+export const getUserRole = () => localStorage.getItem('userRole');
+export const getUserName = () => localStorage.getItem('userName');
+export const isUserAdmin = () => getUserRole() === 'admin';

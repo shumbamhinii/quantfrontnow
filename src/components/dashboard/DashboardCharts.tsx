@@ -13,7 +13,7 @@ import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '../../AuthPage'; // Import useAuth
 
-const API_BASE_URL = 'https://quantnow.onrender.com'; // Changed to localhost:3000 based on previous context
+const API_BASE_URL = 'http://localhost:3000'; // Changed to localhost:3000 based on previous context
 
 interface RevenueDataPoint {
   month: string;
@@ -192,7 +192,7 @@ export function DashboardCharts({ startDate, endDate }: { startDate: Date | null
   // Highcharts options for Invoice vs Quotes
   const invoiceOptions = {
     chart: { type: 'column' },
-    title: { text: `Invoice vs Quotes vs Purchases ${getDateRangeString()}` },
+    title: { text: `Invoice vs Quotes  ${getDateRangeString()}` },
     xAxis: { categories: invoiceData.map(item => item.month) },
     yAxis: { title: { text: 'Count' } },
     tooltip: { shared: true },
@@ -207,11 +207,6 @@ export function DashboardCharts({ startDate, endDate }: { startDate: Date | null
         name: 'Invoices',
         data: invoiceData.map(item => item.invoices),
         color: '#10b981'
-      },
-      {
-        name: 'Purchases',
-        data: invoiceData.map(item => item.purchases),
-        color: '#f59e0b'
       }
     ]
   };
@@ -255,7 +250,7 @@ export function DashboardCharts({ startDate, endDate }: { startDate: Date | null
       >
         <Card>
           <CardHeader>
-            <CardTitle>Invoice vs Quotes vs Purchases</CardTitle>
+            <CardTitle>Invoice vs Quotes</CardTitle>
             <CardDescription>Business transaction volume</CardDescription>
           </CardHeader>
           <CardContent>

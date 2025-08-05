@@ -37,10 +37,9 @@ export interface Employee {
   address: string;
   start_date: string;
   payment_type: 'hourly' | 'salary';
-  base_salary: number | null;
-  hourly_rate: number | null;
-  hours_worked_total: number; // Total hours on the employee record
-  // Assuming bank details are directly on the employee object from the joined query
+  base_salary: number | null; // <-- Change this
+  hourly_rate: number | null; // <-- Change this
+  hours_worked_total: number; // <-- Change this
   bank_name: string | null;
   account_number: string | null;
   branch_code: string | null;
@@ -71,7 +70,7 @@ interface TimeTrackingProps {
   onUpdateEmployeeHours: () => Promise<void>; // Callback to update employee hours in parent
 }
 
-const API_BASE_URL = 'https://quantnow.onrender.com'; // Define your API base URL
+const API_BASE_URL = 'http://localhost:3000'; // Define your API base URL
 
 const TimeTracking: React.FC<TimeTrackingProps> = ({
   employees,

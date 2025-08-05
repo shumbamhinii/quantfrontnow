@@ -21,11 +21,10 @@ import { Header } from '../layout/Header';
 import { Loader2 } from 'lucide-react';
 import { useAuth } from '../../AuthPage';
 import type { Employee } from '../../types/payroll'; // Import Employee from the consolidated payroll types file
- // Import Employee from the consolidated payroll types file
 
 const { Title } = Typography;
 
-const API_BASE_URL = 'https://quantnow.onrender.com'; // Define your API base URL
+const API_BASE_URL = 'http://localhost:3000'; // Define your API base URL
 
 const PayrollDashboard: React.FC = () => {
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -35,7 +34,7 @@ const PayrollDashboard: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const { isAuthenticated } = useAuth(); // Removed hasPermission
+  const { isAuthenticated } = useAuth();
   const token = localStorage.getItem('token');
 
   const getAuthHeaders = useCallback(() => {
@@ -44,7 +43,7 @@ const PayrollDashboard: React.FC = () => {
 
   // Function to fetch employees from the backend
   const fetchEmployees = useCallback(async () => {
-    if (!isAuthenticated || !token) { // Removed permission check
+    if (!isAuthenticated || !token) {
       console.warn('User not authenticated for employee data.');
       setEmployees([]);
       setLoading(false);
@@ -74,17 +73,17 @@ const PayrollDashboard: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [getAuthHeaders, isAuthenticated, token]); // Removed permission check from dependencies
+  }, [getAuthHeaders, isAuthenticated, token]);
 
   useEffect(() => {
-    if (isAuthenticated && token) { // Removed permission check
+    if (isAuthenticated && token) {
       fetchEmployees();
     } else {
       setEmployees([]);
       setLoading(false);
       setError('Please log in to view payroll data.');
     }
-  }, [fetchEmployees, isAuthenticated, token]); // Removed permission check from dependencies
+  }, [fetchEmployees, isAuthenticated, token]);
 
   const handleEmployeeActionSuccess = async () => {
     // This function will be called from EmployeeRegistration after successful API call
@@ -100,22 +99,23 @@ const PayrollDashboard: React.FC = () => {
     setIsEditModalOpen(true);
   };
 
-  // Calculate dashboard statistics from fetched employees
+  // Corrected calculations to use snake_case and explicit number parsing
   const totalEmployees = employees.length;
+  
   const totalHours = employees.reduce((sum, emp) => {
-    // Use the new 'hoursWorked' field (camelCase)
-    return sum + (emp.hoursWorked || 0);
+    return sum + (parseFloat(emp.hours_worked_total as any) || 0);
   }, 0);
 
   const totalPayroll = employees.reduce((sum, emp) => {
-    // Use the new 'paymentType', 'baseSalary', 'hourlyRate', 'hoursWorked' fields (camelCase)
-    if (emp.paymentType === 'salary' && emp.baseSalary) {
-      return sum + emp.baseSalary;
+    let monthlyPay = 0;
+    if (emp.payment_type === 'salary') {
+      monthlyPay = parseFloat(emp.base_salary as any) || 0;
+    } else if (emp.payment_type === 'hourly') {
+      const hours = parseFloat(emp.hours_worked_total as any) || 0;
+      const rate = parseFloat(emp.hourly_rate as any) || 0;
+      monthlyPay = hours * rate;
     }
-    if (emp.paymentType === 'hourly' && emp.hourlyRate) {
-      return sum + (emp.hoursWorked || 0) * emp.hourlyRate;
-    }
-    return sum;
+    return sum + monthlyPay;
   }, 0);
 
 

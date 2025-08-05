@@ -103,7 +103,7 @@ const Accounting = () => {
       return;
     }
     try {
-      const response = await fetch('https://quantnow.onrender.com/assets', {
+      const response = await fetch('http://localhost:3000/assets', {
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`, // Include the JWT token
@@ -127,7 +127,7 @@ const Accounting = () => {
       return;
     }
     try {
-      const response = await fetch('https://quantnow.onrender.com/expenses', {
+      const response = await fetch('http://localhost:3000/expenses', {
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`, // Include the JWT token
@@ -150,7 +150,7 @@ const Accounting = () => {
       return;
     }
     try {
-      const response = await fetch('https://quantnow.onrender.com/accounts', {
+      const response = await fetch('http://localhost:3000/accounts', {
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`, // Include the JWT token
@@ -207,15 +207,15 @@ const Accounting = () => {
     let errorMessage = '';
 
     if (type === 'asset') {
-      url = `https://quantnow.onrender.com/assets/${id}`;
+      url = `http://localhost:3000/assets/${id}`;
       successMessage = 'Asset deleted successfully!';
       errorMessage = 'Failed to delete asset.';
     } else if (type === 'expense') {
-      url = `https://quantnow.onrender.com/expenses/${id}`;
+      url = `http://localhost:3000/expenses/${id}`;
       successMessage = 'Expense deleted successfully!';
       errorMessage = 'Failed to delete expense.';
     } else if (type === 'account') {
-      url = `https://quantnow.onrender.com/accounts/${id}`;
+      url = `http://localhost:3000/accounts/${id}`;
       successMessage = 'Account deleted successfully!';
       errorMessage = 'Failed to delete account.';
     }
@@ -289,10 +289,10 @@ const Accounting = () => {
         };
 
         if (formData.id) { // Editing existing asset
-          url = `https://quantnow.onrender.com/assets/${formData.id}`;
+          url = `http://localhost:3000/assets/${formData.id}`;
           method = 'PUT';
         } else { // Adding new asset
-          url = 'https://quantnow.onrender.com/assets';
+          url = 'http://localhost:3000/assets';
           method = 'POST';
         }
       } else if (modalType === 'expense') {
@@ -315,10 +315,10 @@ const Accounting = () => {
           account_id: formData.account_id,
         };
         if (formData.id) { // Editing existing expense
-          url = `https://quantnow.onrender.com/expenses/${formData.id}`;
+          url = `http://localhost:3000/expenses/${formData.id}`;
           method = 'PUT';
         } else { // Adding new expense
-          url = 'https://quantnow.onrender.com/expenses';
+          url = 'http://localhost:3000/expenses';
           method = 'POST';
         }
       } else if (modalType === 'account') {
@@ -332,10 +332,10 @@ const Accounting = () => {
           code: formData.code,
         };
         if (formData.id) { // Editing existing account
-          url = `https://quantnow.onrender.com/accounts/${formData.id}`;
+          url = `http://localhost:3000/accounts/${formData.id}`;
           method = 'PUT';
         } else { // Adding new account
-          url = 'https://quantnow.onrender.com/accounts';
+          url = 'http://localhost:3000/accounts';
           method = 'POST';
         }
       }
@@ -374,7 +374,7 @@ const Accounting = () => {
     }
     setIsDepreciating(true);
     try {
-      const response = await fetch('https://quantnow.onrender.com/api/depreciation/run', {
+      const response = await fetch('http://localhost:3000/api/depreciation/run', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

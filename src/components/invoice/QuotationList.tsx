@@ -55,7 +55,7 @@ declare global {
 }
 
 // Define API Base URL
-const API_BASE_URL = 'https://quantnow.onrender.com';
+const API_BASE_URL = 'http://localhost:3000';
 
 // --- Interfaces to match backend API responses for Quotations ---
 interface QuotationLineItem {
@@ -114,6 +114,20 @@ interface NewInvoicePayload {
   line_items: InvoiceLineItem[];
 }
 
+// --- NEW: User Profile Interface ---
+interface UserProfile {
+  company?: string | null; // Changed to allow null
+  email?: string | null;
+  address?: string | null;
+  city?: string | null;
+  province?: string | null;
+  postal_code?: string | null;
+  country?: string | null;
+  phone?: string | null;
+  contact_person?: string | null;
+  // Add other fields you might need from the profile
+}
+
 // --- QuotationList Component ---
 export function QuotationList() {
   const { toast } = useToast();
@@ -127,6 +141,8 @@ export function QuotationList() {
   const [isFormLoading, setIsFormLoading] = useState(false); // New: Loading state for the form details
   const [isConverting, setIsConverting] = useState(false); // New: Loading state for conversion
   const [isPdfLibLoaded, setIsPdfLibLoaded] = useState(false); // New: State to track PDF library loading
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null); // NEW: State for user profile
+  const [isLoadingProfile, setIsLoadingProfile] = useState(false); // NEW: Loading state for profile
 
   // States for Email functionality
   const [isEmailModalOpen, setIsEmailModalOpen] = useState(false);
@@ -187,6 +203,42 @@ export function QuotationList() {
   }, [toast]);
 
 
+  // NEW: Function to fetch user profile
+  const fetchUserProfile = useCallback(async () => {
+    if (!token) {
+      console.warn('No token found. User is not authenticated for profile.');
+      setUserProfile(null);
+      setIsLoadingProfile(false);
+      return;
+    }
+
+    setIsLoadingProfile(true);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/profile`, {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+      });
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Failed to fetch user profile');
+      }
+      const data: UserProfile = await response.json();
+      console.log('Fetched User Profile:', data); // Log the fetched data
+      setUserProfile(data);
+    } catch (error: any) {
+      console.error('Error fetching user profile:', error);
+      toast({
+        title: 'Profile Load Error',
+        description: error.message || 'Failed to load company profile. PDF and email features may be limited.',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLoadingProfile(false);
+    }
+  }, [toast, token]);
+
   // Function to fetch quotations from the backend
   const fetchQuotations = useCallback(async () => {
     if (!token) {
@@ -230,11 +282,13 @@ export function QuotationList() {
   useEffect(() => {
     if (isAuthenticated && token) {
       fetchQuotations();
+      fetchUserProfile(); // NEW: Fetch profile on mount
     } else {
       setQuotations([]);
+      setUserProfile(null); // Clear profile if not authenticated
       setIsLoadingList(false);
     }
-  }, [fetchQuotations, isAuthenticated, token]); // Add isAuthenticated and token to dependencies
+  }, [fetchQuotations, fetchUserProfile, isAuthenticated, token]); // Add isAuthenticated and token to dependencies
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -369,6 +423,22 @@ export function QuotationList() {
       });
       return;
     }
+    if (isLoadingProfile) {
+      toast({
+        title: 'Loading Profile',
+        description: 'Company profile is still loading. Please wait a moment and try again.',
+        variant: 'default',
+      });
+      return;
+    }
+    if (!userProfile || !userProfile.company) { // Check if userProfile or company name is missing
+      toast({
+        title: 'Company Profile Missing',
+        description: 'Company name not loaded from your profile. Cannot generate PDF with company details. Please ensure your profile is complete.',
+        variant: 'destructive',
+      });
+      return;
+    }
 
     try {
       const doc = new window.jspdf.jsPDF();
@@ -377,7 +447,22 @@ export function QuotationList() {
       // Set company header
       doc.setFontSize(18);
       doc.setFont(undefined, 'bold');
-      doc.text('Quantilytix', 14, yPos); // Top left
+      // Use company name from profile, with a fallback
+      doc.text(userProfile.company || 'Your Company Name', 14, yPos);
+      yPos += 7;
+      doc.setFontSize(10);
+      doc.setFont(undefined, 'normal');
+      if (userProfile.address) doc.text(userProfile.address, 14, yPos);
+      yPos += 5;
+      if (userProfile.city || userProfile.postal_code) doc.text(`${userProfile.city || ''} ${userProfile.postal_code || ''}`.trim(), 14, yPos);
+      yPos += 5;
+      if (userProfile.country) doc.text(userProfile.country, 14, yPos);
+      yPos += 5;
+      if (userProfile.phone) doc.text(`Phone: ${userProfile.phone}`, 14, yPos);
+      yPos += 5;
+      if (userProfile.email) doc.text(`Email: ${userProfile.email}`, 14, yPos);
+      yPos += 15;
+
 
       // Document Title
       doc.setFontSize(24);
@@ -507,6 +592,22 @@ export function QuotationList() {
       });
       return;
     }
+    if (isLoadingProfile) {
+      toast({
+        title: 'Loading Profile',
+        description: 'Company profile is still loading. Please wait a moment and try again.',
+        variant: 'default',
+      });
+      return;
+    }
+    if (!userProfile || !userProfile.company) { // Check if userProfile or company name is missing
+      toast({
+        title: 'Company Profile Missing',
+        description: 'Company name not loaded from your profile. Cannot prepare email with company details. Please ensure your profile is complete.',
+        variant: 'destructive',
+      });
+      return;
+    }
 
     setSelectedQuotation(quotation); // Set the quotation for the email dialog
     // Fetch customer details to pre-fill email if not already available in quotation list
@@ -526,8 +627,10 @@ export function QuotationList() {
       setEmailRecipient(''); // Fallback if customer email cannot be fetched
     }
 
-    setEmailSubject(`Quotation ${quotation.quotation_number} from QxAnalytix`);
-    setEmailBody(`Dear ${quotation.customer_name},\n\nPlease find attached your quotation, ${quotation.quotation_number}, for your review.\n\nBest regards,\nQxAnalytix Team`);
+    // Use company name from profile for email subject and body
+    const companyName = userProfile.company || 'Your Compa';
+    setEmailSubject(`Quotation ${quotation.quotation_number} from ${companyName}`);
+    setEmailBody(`Dear ${quotation.customer_name},\n\nPlease find attached your quotation, ${quotation.quotation_number}, for your review.\n\nBest regards,\n${userProfile.contact_person || companyName} Team`);
     setIsEmailModalOpen(true);
   };
 
@@ -810,25 +913,26 @@ export function QuotationList() {
         </div>
       </CardHeader>
       <CardContent className='space-y-4'>
-        <div className='flex items-center gap-4'>
-          <div className='relative flex-1'>
-            <Search className='absolute left-3 top-3 h-4 w-4 text-muted-foreground' />
+        <div className='flex items-center justify-between'>
+          <div className='relative w-full max-w-sm'>
+            <Search className='absolute left-2 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground' />
             <Input
-              placeholder='Search quotations by number or customer...'
+              placeholder='Search quotations...'
+              className='pl-8'
               value={searchTerm}
-              onChange={e => setSearchTerm(e.target.value)}
-              className='pl-10'
+              onChange={(e) => setSearchTerm(e.target.value)}
             />
           </div>
         </div>
-
         {isLoadingList ? (
           <div className='flex justify-center items-center h-40'>
             <Loader2 className='h-8 w-8 animate-spin text-gray-500' />
             <span className='ml-2 text-gray-600'>Loading quotations...</span>
           </div>
+        ) : filteredQuotations.length === 0 ? (
+          <p className="text-center text-muted-foreground py-8">No quotations found.</p>
         ) : (
-          <div className='border rounded-lg overflow-x-auto'>
+          <div className='overflow-x-auto'>
             <Table>
               <TableHeader>
                 <TableRow>
@@ -836,198 +940,143 @@ export function QuotationList() {
                   <TableHead>Customer</TableHead>
                   <TableHead>Date</TableHead>
                   <TableHead>Expiry Date</TableHead>
-                  <TableHead>Amount</TableHead>
+                  <TableHead>Total</TableHead>
                   <TableHead>Status</TableHead>
-                  <TableHead>Actions</TableHead>
+                  <TableHead className='text-right'>Actions</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredQuotations.length === 0 ? (
-                  <TableRow>
-                    <TableCell colSpan={7} className='text-center py-8 text-muted-foreground'>
-                      No quotations found.
+                {filteredQuotations.map(quotation => (
+                  <TableRow key={quotation.id}>
+                    <TableCell className='font-medium'>{quotation.quotation_number}</TableCell>
+                    <TableCell>{quotation.customer_name}</TableCell>
+                    <TableCell>{new Date(quotation.quotation_date).toLocaleDateString()}</TableCell>
+                    <TableCell>{quotation.expiry_date ? new Date(quotation.expiry_date).toLocaleDateString() : 'N/A'}</TableCell>
+                    <TableCell>{quotation.currency} {quotation.total_amount.toFixed(2)}</TableCell>
+                    <TableCell>
+                      <Badge className={getStatusColor(quotation.status)}>
+                        {quotation.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className='text-right'>
+                      <div className='flex justify-end space-x-2'>
+                        <Button variant='outline' size='sm' onClick={() => handleViewQuotationClick(quotation)}>
+                          <Eye className='h-4 w-4' />
+                        </Button>
+                        <Button variant='outline' size='sm' onClick={() => handleEditQuotationClick(quotation)}>
+                          <Edit className='h-4 w-4' />
+                        </Button>
+                        <Button variant='outline' size='sm' onClick={() => handleDownloadPdf(quotation)} disabled={!isPdfLibLoaded || isLoadingProfile}>
+                          {isLoadingProfile ? <Loader2 className='h-4 w-4 animate-spin' /> : <FileText className='h-4 w-4' />}
+                        </Button>
+                        <Button variant='outline' size='sm' onClick={() => handleSendEmailClick(quotation)} disabled={isLoadingProfile}>
+                          {isLoadingProfile ? <Loader2 className='h-4 w-4 animate-spin' /> : <Mail className='h-4 w-4' />}
+                        </Button>
+                        <Button
+                          variant='outline'
+                          size='sm'
+                          onClick={() => handleConvertToInvoice(quotation)}
+                          disabled={isConverting || quotation.status !== 'Accepted'}
+                        >
+                          {isConverting ? <Loader2 className='h-4 w-4 animate-spin' /> : <ArrowRight className='h-4 w-4' />}
+                        </Button>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button variant='destructive' size='sm' onClick={() => confirmDeleteQuotation(quotation.id)}>
+                              <Trash2 className='h-4 w-4' />
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                This action cannot be undone. This will permanently delete your quotation
+                                and remove its data from our servers.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Cancel</AlertDialogCancel>
+                              <AlertDialogAction onClick={handleDeleteQuotation}>Delete</AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </div>
                     </TableCell>
                   </TableRow>
-                ) : (
-                  filteredQuotations.map(quotation => (
-                    <TableRow key={quotation.id}>
-                      <TableCell className='font-medium'>{quotation.quotation_number}</TableCell>
-                      <TableCell>{quotation.customer_name}</TableCell>
-                      <TableCell>{new Date(quotation.quotation_date).toLocaleDateString('en-ZA')}</TableCell>
-                      <TableCell>
-                        {quotation.expiry_date
-                          ? new Date(quotation.expiry_date).toLocaleDateString('en-ZA')
-                          : 'N/A'}
-                      </TableCell>
-                      <TableCell>
-                        R
-                        {(quotation.total_amount).toLocaleString('en-ZA', {
-                          minimumFractionDigits: 2,
-                        })}
-                      </TableCell>
-                      <TableCell>
-                        <Badge variant='secondary' className={getStatusColor(quotation.status)}>
-                          {quotation.status.toUpperCase()}
-                        </Badge>
-                      </TableCell>
-                      <TableCell>
-                        <div className='flex items-center gap-2'>
-                          <Button variant='ghost' size='sm' onClick={() => handleViewQuotationClick(quotation)}>
-                            <Eye className='h-4 w-4' />
-                          </Button>
-                          <Button variant='ghost' size='sm' onClick={() => handleEditQuotationClick(quotation)}>
-                            <Edit className='h-4 w-4' />
-                          </Button>
-                          {/* UPDATED: Download PDF Button - disabled if PDF lib not loaded */}
-                          <Button
-                            variant='ghost'
-                            size='sm'
-                            title='Download PDF'
-                            onClick={() => handleDownloadPdf(quotation)}
-                            disabled={!isPdfLibLoaded}
-                          >
-                            <FileText className='h-4 w-4' />
-                          </Button>
-                          {/* NEW: Send Email Button */}
-                          <Button variant='ghost' size='sm' title='Send Email' onClick={() => handleSendEmailClick(quotation)}>
-                            <Mail className='h-4 w-4' />
-                          </Button>
-                          {quotation.status === 'Accepted' && (
-                            <Button
-                              variant='ghost'
-                              size='sm'
-                              title='Convert to Invoice'
-                              onClick={() => handleConvertToInvoice(quotation)}
-                              disabled={isConverting}
-                            >
-                              {isConverting ? <Loader2 className='h-4 w-4 animate-spin' /> : <ArrowRight className='h-4 w-4' />}
-                            </Button>
-                          )}
-                          {/* AlertDialog for deletion confirmation */}
-                          <AlertDialog>
-                            <AlertDialogTrigger asChild>
-                              <Button variant='ghost' size='sm' onClick={() => confirmDeleteQuotation(quotation.id)}>
-                                <Trash2 className='h-4 w-4' />
-                              </Button>
-                            </AlertDialogTrigger>
-                            <AlertDialogContent>
-                              <AlertDialogHeader>
-                                <AlertDialogTitle>Confirm Deletion</AlertDialogTitle>
-                                <AlertDialogDescription>
-                                  Are you sure you want to delete quotation {quotation.quotation_number}? This action cannot be undone.
-                                </AlertDialogDescription>
-                              </AlertDialogHeader>
-                              <AlertDialogFooter>
-                                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                                <AlertDialogAction onClick={handleDeleteQuotation}>
-                                  Delete
-                                </AlertDialogAction>
-                              </AlertDialogFooter>
-                            </AlertDialogContent>
-                          </AlertDialog>
-                        </div>
-                      </TableCell>
-                    </TableRow>
-                  ))
-                )}
+                ))}
               </TableBody>
             </Table>
           </div>
         )}
       </CardContent>
 
-      {/* View Quotation Details Modal */}
+      {/* View Quotation Modal */}
       <Dialog open={isViewModalOpen} onOpenChange={setIsViewModalOpen}>
-        <DialogContent className='max-w-4xl max-h-[90vh] overflow-y-auto'>
+        <DialogContent className='max-w-4xl overflow-y-auto max-h-[90vh]'>
           <DialogHeader>
             <DialogTitle>Quotation Details: {selectedQuotation?.quotation_number}</DialogTitle>
-            <DialogDescription>Detailed view of the selected quotation.</DialogDescription>
+            <DialogDescription>
+              Detailed view of the selected quotation.
+            </DialogDescription>
           </DialogHeader>
-          {selectedQuotation ? (
-            <div className='space-y-4 text-sm'>
-              <div className='grid grid-cols-2 gap-4'>
-                <div>
-                  <p>
-                    <strong>Customer:</strong> {selectedQuotation.customer_name}
-                  </p>
-                  <p>
-                    <strong>Quotation Date:</strong> {new Date(selectedQuotation.quotation_date).toLocaleDateString('en-ZA')}
-                  </p>
-                  <p>
-                    <strong>Expiry Date:</strong>{' '}
-                    {selectedQuotation.expiry_date
-                      ? new Date(selectedQuotation.expiry_date).toLocaleDateString('en-ZA')
-                      : 'N/A'}
-                  </p>
-                </div>
-                <div>
-                  <p>
-                    <strong>Status:</strong>{' '}
-                    <Badge variant='secondary' className={getStatusColor(selectedQuotation.status)}>
-                      {selectedQuotation.status.toUpperCase()}
-                    </Badge>
-                  </p>
-                  <p>
-                    <strong>Total Amount:</strong> {selectedQuotation.currency}
-                    {(selectedQuotation.total_amount).toLocaleString('en-ZA', {
-                      minimumFractionDigits: 2,
-                    })}
-                  </p>
-                  <p>
-                    <strong>Currency:</strong> {selectedQuotation.currency}
-                  </p>
-                </div>
+          {selectedQuotation && (
+            <div className='grid grid-cols-1 md:grid-cols-2 gap-4 text-sm'>
+              <div className='space-y-2'>
+                <p><strong>Customer:</strong> {selectedQuotation.customer_name}</p>
+                {selectedQuotation.customer_email && <p><strong>Customer Email:</strong> {selectedQuotation.customer_email}</p>}
+                <p><strong>Quotation Date:</strong> {new Date(selectedQuotation.quotation_date).toLocaleDateString()}</p>
+                <p><strong>Expiry Date:</strong> {selectedQuotation.expiry_date ? new Date(selectedQuotation.expiry_date).toLocaleDateString() : 'N/A'}</p>
+                <p><strong>Status:</strong> <Badge className={getStatusColor(selectedQuotation.status)}>{selectedQuotation.status}</Badge></p>
               </div>
-              {selectedQuotation.notes && (
-                <p>
-                  <strong>Notes:</strong> {selectedQuotation.notes}
-                </p>
-              )}
+              <div className='space-y-2'>
+                <p><strong>Total Amount:</strong> {selectedQuotation.currency} {selectedQuotation.total_amount.toFixed(2)}</p>
+                <p><strong>Created At:</strong> {new Date(selectedQuotation.created_at).toLocaleString()}</p>
+                <p><strong>Last Updated:</strong> {new Date(selectedQuotation.updated_at).toLocaleString()}</p>
+              </div>
 
-              <h3 className='text-lg font-semibold mt-4'>Line Items</h3>
-              <div className='border rounded-lg overflow-x-auto'>
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Item</TableHead>
-                      <TableHead>Description</TableHead>
-                      <TableHead>Qty</TableHead>
-                      <TableHead>Unit Price</TableHead>
-                      <TableHead>Tax Rate</TableHead>
-                      <TableHead>Line Total</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {selectedQuotation.line_items && selectedQuotation.line_items.length > 0 ? (
-                      selectedQuotation.line_items.map((item, index) => (
-                        <TableRow key={item.id || index}>
-                          <TableCell>{item.product_service_name}</TableCell>
-                          <TableCell>{item.description}</TableCell>
-                          <TableCell>{item.quantity}</TableCell>
-                          <TableCell>R{item.unit_price.toFixed(2)}</TableCell>
-                          <TableCell>{(item.tax_rate * 100).toFixed(0)}%</TableCell>
-                          <TableCell>R{item.line_total.toFixed(2)}</TableCell>
-                        </TableRow>
-                      ))
-                    ) : (
+              <div className='md:col-span-2 mt-4'>
+                <h3 className='font-bold text-md mb-2'>Line Items</h3>
+                {selectedQuotation.line_items && selectedQuotation.line_items.length > 0 ? (
+                  <Table>
+                    <TableHeader>
                       <TableRow>
-                        <TableCell colSpan={6} className='text-center py-4 text-muted-foreground'>
-                          No line items for this quotation.
-                        </TableCell>
+                        <TableHead>Item</TableHead>
+                        <TableHead>Description</TableHead>
+                        <TableHead className='text-right'>Qty</TableHead>
+                        <TableHead className='text-right'>Unit Price</TableHead>
+                        <TableHead className='text-right'>Tax Rate</TableHead>
+                        <TableHead className='text-right'>Line Total</TableHead>
                       </TableRow>
-                    )}
-                  </TableBody>
-                </Table>
+                    </TableHeader>
+                    <TableBody>
+                      {selectedQuotation.line_items.map(item => (
+                        <TableRow key={item.id}>
+                          <TableCell>{item.product_service_name || 'N/A'}</TableCell>
+                          <TableCell>{item.description}</TableCell>
+                          <TableCell className='text-right'>{item.quantity}</TableCell>
+                          <TableCell className='text-right'>{selectedQuotation.currency} {item.unit_price.toFixed(2)}</TableCell>
+                          <TableCell className='text-right'>{(item.tax_rate * 100).toFixed(0)}%</TableCell>
+                          <TableCell className='text-right'>{selectedQuotation.currency} {item.line_total.toFixed(2)}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                ) : (
+                  <p className="text-muted-foreground">No line items for this quotation.</p>
+                )}
               </div>
-              <DialogFooter>
-                <Button variant='outline' onClick={() => setIsViewModalOpen(false)}>
-                  Close
-                </Button>
-              </DialogFooter>
+
+              {selectedQuotation.notes && (
+                <div className='md:col-span-2 mt-4'>
+                  <h3 className='font-bold text-md mb-2'>Notes</h3>
+                  <p className='whitespace-pre-wrap'>{selectedQuotation.notes}</p>
+                </div>
+              )}
             </div>
-          ) : (
-            <p>No quotation selected.</p>
           )}
+          <DialogFooter>
+            <Button onClick={() => setIsViewModalOpen(false)}>Close</Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
 
@@ -1035,52 +1084,51 @@ export function QuotationList() {
       <Dialog open={isEmailModalOpen} onOpenChange={setIsEmailModalOpen}>
         <DialogContent className='sm:max-w-[425px]'>
           <DialogHeader>
-            <DialogTitle>Send Quotation Email</DialogTitle>
+            <DialogTitle>Email Quotation {selectedQuotation?.quotation_number}</DialogTitle>
             <DialogDescription>
-              Send quotation {selectedQuotation?.quotation_number} to your customer via email.
+              Compose and send the quotation via email.
             </DialogDescription>
           </DialogHeader>
           <div className='grid gap-4 py-4'>
             <div className='grid grid-cols-4 items-center gap-4'>
-              <Label htmlFor='emailRecipient' className='text-right'>
-                To
+              <Label htmlFor='recipient' className='text-right'>
+                Recipient
               </Label>
               <Input
-                id='emailRecipient'
+                id='recipient'
+                type='email'
                 value={emailRecipient}
                 onChange={(e) => setEmailRecipient(e.target.value)}
                 className='col-span-3'
               />
             </div>
             <div className='grid grid-cols-4 items-center gap-4'>
-              <Label htmlFor='emailSubject' className='text-right'>
+              <Label htmlFor='subject' className='text-right'>
                 Subject
               </Label>
               <Input
-                id='emailSubject'
+                id='subject'
                 value={emailSubject}
                 onChange={(e) => setEmailSubject(e.target.value)}
                 className='col-span-3'
               />
             </div>
             <div className='grid grid-cols-4 items-center gap-4'>
-              <Label htmlFor='emailBody' className='text-right'>
+              <Label htmlFor='body' className='text-right'>
                 Body
               </Label>
               <Textarea
-                id='emailBody'
+                id='body'
                 value={emailBody}
                 onChange={(e) => setEmailBody(e.target.value)}
-                className='col-span-3 min-h-[100px]'
+                className='col-span-3 min-h-[150px]'
               />
             </div>
           </div>
           <DialogFooter>
-            <Button variant='outline' onClick={() => setIsEmailModalOpen(false)}>
-              Cancel
-            </Button>
+            <Button variant='outline' onClick={() => setIsEmailModalOpen(false)}>Cancel</Button>
             <Button onClick={handleSendEmail} disabled={isSendingEmail}>
-              {isSendingEmail ? <Loader2 className='h-4 w-4 animate-spin mr-2' /> : <Mail className='h-4 w-4 mr-2' />}
+              {isSendingEmail && <Loader2 className='h-4 w-4 mr-2 animate-spin' />}
               Send Email
             </Button>
           </DialogFooter>
