@@ -219,21 +219,7 @@ const TimeTracking: React.FC<TimeTrackingProps> = ({
         throw new Error('Employee not found for hours update.');
       }
 
-      const newHoursWorkedTotal = (employee.hours_worked_total ?? 0) + hoursWorked;
 
-      const employeeUpdateResponse = await fetch(`${API_BASE_URL}/employees/${employeeId}`, {
-        method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`, // Include the JWT token
-        },
-        body: JSON.stringify({ hoursWorked: newHoursWorkedTotal })
-      });
-
-      if (!employeeUpdateResponse.ok) {
-        const errorData = await employeeUpdateResponse.json().catch(() => ({ error: 'Unknown error.' }));
-        throw new Error(errorData.error || `Failed to update employee hours: ${employeeUpdateResponse.status}`);
-      }
 
       // Step 3: Refresh local state and parent's employee data
       await fetchTimeEntries();

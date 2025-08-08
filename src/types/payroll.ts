@@ -24,10 +24,10 @@ export interface Employee {
     hourly_rate: number;
 
     // Bank details as top-level optional strings, matching backend names
-    account_holder?: string | null;
-    bank_name?: string | null;
-    account_number?: string | null;
-    branch_code?: string | null;
+  bank_name?: string;
+  account_holder?: string;
+  account_number?: string;
+  branch_code?: string;
 }
 
 export interface PayrollCalculation {

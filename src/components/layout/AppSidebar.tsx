@@ -61,27 +61,27 @@ const navigationItems: NavigationItem[] = [
     url: '/pos',
     icon: CreditCard,
     // Added 'ceo' and 'user' roles to this item and its children
-    allowedRoles: ['cashier', 'user', 'pos-transact', 'ceo'],
+    allowedRoles: ['cashier', 'user', 'pos-transact', 'admin'],
 
   },
-  { title: 'Tasks', url: '/tasks', icon: ListStartIcon, allowedRoles: ['manager', 'user', 'tasks', 'ceo'] },
+  { title: 'Tasks', url: '/tasks', icon: ListStartIcon, allowedRoles: ['manager', 'user', 'tasks', 'admin'] },
   // Added 'ceo' role
-  { title: 'Transactions', url: '/transactions', icon: CreditCard, allowedRoles: ['manager', 'user', 'transactions', 'ceo'] },
+  { title: 'Transactions', url: '/transactions', icon: CreditCard, allowedRoles: ['manager', 'user', 'transactions', 'admin'] },
   // Added 'user' role
  
-  { title: 'Financials', url: '/financials', icon: BarChart3, allowedRoles: ['ceo', 'manager', 'financials', 'user'] },
+  { title: 'Financials', url: '/financials', icon: BarChart3, allowedRoles: ['admin', 'manager', 'financials', 'user'] },
   // Added 'ceo' and 'user' roles
-  { title: 'Import', url: '/import', icon: Upload, allowedRoles: ['manager', 'import', 'user', 'ceo'] },
+  { title: 'Import', url: '/import', icon: Upload, allowedRoles: ['manager', 'import', 'user', 'admin'] },
   // Added 'user' role
-  { title: 'Data Analytics', url: '/analytics', icon: TrendingUp, allowedRoles: ['ceo', 'manager', 'data-analytics', 'user'] },
+  { title: 'Data Analytics', url: '/analytics', icon: TrendingUp, allowedRoles: ['admin', 'manager', 'data-analytics', 'user'] },
 ];
 
 // Hard-coded list of business tools navigation items with specific role access
 const businessItems: NavigationItem[] = [
   // Added 'ceo' role
-  { title: 'Invoice/Quote', url: '/invoice-quote', icon: FileText, allowedRoles: ['manager', 'user', 'invoice', 'ceo'] },
+  { title: 'Invoice/Quote', url: '/invoice-quote', icon: FileText, allowedRoles: ['manager', 'user', 'invoice', 'admin'] },
   // Added 'ceo' and 'user' roles
-  { title: 'Payroll', url: '/payroll', icon: Calculator, allowedRoles: ['manager', 'payroll', 'user', 'ceo'] },
+  { title: 'Payroll', url: '/payroll', icon: Calculator, allowedRoles: ['manager', 'payroll', 'user', 'admin'] },
   {
     title: 'POS Admin',
     url: '/pos/products',
@@ -89,13 +89,13 @@ const businessItems: NavigationItem[] = [
     // Added 'ceo' and 'user' roles to this item and its children
     allowedRoles: ['manager', 'pos-admin', 'user', 'ceo'],
     children: [
-      { title: 'Products', url: '/pos/products', icon: Package, allowedRoles: ['manager', 'pos-admin', 'user', 'ceo'] },
-      { title: 'Credits', url: '/pos/credits', icon: DollarSign, allowedRoles: ['manager', 'pos-admin', 'user', 'ceo'] },
-      { title: 'Cash', url: '/pos/cash', icon: Wallet, allowedRoles: ['manager', 'pos-admin', 'user', 'ceo'] },
+      { title: 'Products', url: '/pos/products', icon: Package, allowedRoles: ['manager', 'pos-admin', 'user', 'admin'] },
+      { title: 'Credits', url: '/pos/credits', icon: DollarSign, allowedRoles: ['manager', 'pos-admin', 'user', 'admin'] },
+      { title: 'Cash', url: '/pos/cash', icon: Wallet, allowedRoles: ['manager', 'pos-admin', 'user', 'admin'] },
     ],
   },
   // Added 'user' role
-  { title: 'Projections', url: '/projections', icon: TrendingUp, allowedRoles: ['ceo', 'manager', 'projections', 'user'] },
+  { title: 'Projections', url: '/projections', icon: TrendingUp, allowedRoles: ['admin', 'manager', 'projections', 'user'] },
   // Added 'ceo' and 'user' roles
   { title: 'Accounting Setup', url: '/accounting', icon: Calculator, allowedRoles: ['admin', 'accountant', 'accounting', 'user', 'ceo'] },
   // These already had both roles, so no changes were needed
@@ -119,7 +119,7 @@ export function AppSidebar() {
   const navigate = useNavigate();
   const { toast } = useToast();
   // Get the user name and role from the authentication context
-  const { logout, userName, userRole } = useAuth();
+  const { logout, userName, userRoles } = useAuth();
 
   const currentPath = location.pathname;
 
@@ -156,12 +156,10 @@ export function AppSidebar() {
    * @param allowedRoles The list of roles that are allowed to access the item.
    * @returns true if the user has access, false otherwise.
    */
-  const hasAccess = (allowedRoles: string[] = []) => {
-    if (!userRole) return false;
-    // Access is now determined by whether the user's role is included in the allowedRoles array.
-    // The user and ceo roles no longer have implicit access to everything.
-    return allowedRoles.includes(userRole);
-  };
+const hasAccess = (allowedRoles: string[] = []) => {
+  if (!userRoles || userRoles.length === 0) return false;
+  return userRoles.some(role => allowedRoles.includes(role));
+};
   
 
   const renderSubMenu = (item: NavigationItem, isOpen: boolean, setIsOpen: (val: boolean) => void) => (
@@ -332,16 +330,20 @@ export function AppSidebar() {
       </SidebarContent>
 
       <SidebarFooter className='p-4 border-t border-gray-200 dark:border-gray-700'>
-        {/* User Info */}
-        <div className='flex items-center space-x-2 text-sm text-muted-foreground mb-4'>
-          <User className='h-5 w-5' />
-          {state === 'expanded' && (
-            <div className="flex flex-col">
-              <span>{userName || 'Guest'}</span>
-              <span className="text-xs text-muted-foreground">{userRole || 'No Role'}</span>
-            </div>
-          )}
-        </div>
+{/* User Info */}
+<div className='flex items-center space-x-2 text-sm text-muted-foreground mb-4'>
+  <User className='h-5 w-5' />
+  {state === 'expanded' && (
+    <div className="flex flex-col">
+      <span>{userName || 'Guest'}</span>
+      <span className="text-xs text-muted-foreground">
+        {userRoles && userRoles.length > 0 ? userRoles.join(', ') : 'No Role'}
+      </span>
+    </div>
+  )}
+</div>
+
+
 
         {/* Logout Button */}
         <SidebarMenuItem>

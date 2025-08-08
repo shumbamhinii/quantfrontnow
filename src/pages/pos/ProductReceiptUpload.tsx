@@ -21,58 +21,42 @@ import { useAuth } from '../../AuthPage'; // Import useAuth
 
 const { Option } = Select;
 
-// Hardcoded Data for Demonstration
-interface ProductBackend {
-  id?: string;
-  name: string;
-  description?: string;
-  unit_price: number;
-  cost_price?: number;
-  sku?: string;
-  is_service: boolean;
-  stock_quantity: number;
-  unit?: string;
-  min_quantity?: number;
-  max_quantity?: number;
-  available_value?: number;
-  company_name: string;
-  created_at?: string;
-  updated_at?: string;
-}
-
+// Define the structure for items returned by the receipt scanning AI API
 interface ReceiptItem {
   name: string;
-  category: 'stock' | 'service';
+  category: 'stock' | 'service'; // Assuming these categories from the AI's output
   unit_price: number;
   quantity: number;
+  // Add other fields if the AI API returns them, e.g., 'cost_price', 'sku'
 }
 
-const HARDCODED_RECEIPT_ITEMS: ReceiptItem[] = [
-  { name: 'Milk (1L)', category: 'stock', unit_price: 25.00, quantity: 2 },
-  { name: 'Bread (White)', category: 'stock', unit_price: 18.50, quantity: 1 },
-  { name: 'Software License', category: 'service', unit_price: 500.00, quantity: 1 },
-  { name: 'Apples (per kg)', category: 'stock', unit_price: 30.00, quantity: 1.5 },
-];
+// Define the structure for products to be saved to your backend
+interface ProductToSave {
+  name: string;
+  type: 'product' | 'service';
+  sellingPrice: number;
+  qty: number;
+  unit: string;
+  companyName: string;
+  // Add other fields needed for your products_services table, e.g., description, cost_price, sku, min_quantity, max_quantity
+}
 
-// Utility to convert File to Base64 (still needed for upload component, but won't be sent to real API)
-const fileToBase64 = (file: File): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = () => {
-      const base64String = (reader.result as string).split(',')[1];
-      resolve(base64String);
-    };
-    reader.onerror = (error) => reject(error);
-  });
-};
+// Utility to flatten items from bulk results
+function flattenItems(results: Array<{ data?: { items?: ReceiptItem[] } }>): ReceiptItem[] {
+  if (Array.isArray(results)) {
+    return results.flatMap(r => r.data?.items || []);
+  }
+  return []; // Should not happen with current usage, but for type safety
+}
 
-const defaultProduct = (item: ReceiptItem) => ({
+// Default product structure conversion from ReceiptItem
+const defaultProduct = (item: ReceiptItem): ProductToSave => ({
   name: item.name || '',
   type: item.category === 'stock' ? 'product' : 'service',
   sellingPrice: Number(item.unit_price || 0),
   qty: Number(item.quantity || 1),
   unit: 'item', // Default unit, can be adjusted by user
+  companyName: '', // This will be filled by the component prop
 });
 
 export default function ReceiptProductUploader({
@@ -84,52 +68,83 @@ export default function ReceiptProductUploader({
 }) {
   const [tab, setTab] = useState('single');
   const [loading, setLoading] = useState(false);
-  const [products, setProducts] = useState<any[]>([]); // Products parsed from receipts, ready for editing/saving
+  const [products, setProducts] = useState<ProductToSave[]>([]); // Products parsed from receipts, ready for editing/saving
   const [form] = Form.useForm();
   const isMobile = useMediaQuery({ maxWidth: 767 });
 
-  // Multipart session state (simulated)
+  // Multipart session state
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [parts, setParts] = useState<File[]>([]); // Store actual File objects for display/count
 
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated } = useAuth(); // Get isAuthenticated from useAuth
 
-  // Helper to simulate authentication check for UI enablement
+  // Helper to check authentication for UI enablement
   const isUserAuthenticated = isAuthenticated;
 
-  // Simulate Process Single Receipt
+  // --- API Calls to External AI Service ---
+
   const processSingleReceipt = async (file: File) => {
     if (!isUserAuthenticated) {
       message.error('Authentication required to process receipts.');
       return;
     }
     setLoading(true);
-    // Simulate API call delay
-    const timer = setTimeout(() => {
-      setProducts(HARDCODED_RECEIPT_ITEMS.map(defaultProduct));
-      message.success('Receipt processed successfully! (Simulated)');
+    const formData = new FormData();
+    formData.append('image', file);
+
+    try {
+      const res = await fetch(
+        'https://rairo-pos-image-api.hf.space/process-receipt', // External AI endpoint
+        {
+          method: 'POST',
+          body: formData,
+        }
+      );
+      const data = await res.json();
+      if (data.success) {
+        // Assuming the AI returns data in a similar structure: { success: true, data: { items: [...] } }
+        setProducts((data.data?.items || []).map(item => ({ ...defaultProduct(item), companyName })));
+        message.success('Receipt processed successfully by AI!');
+      } else {
+        message.error(data.error || 'Failed to process receipt by AI.');
+      }
+    } catch (error) {
+      console.error('Error processing single receipt with AI:', error);
+      message.error('Network error or AI service issue during single receipt processing.');
+    } finally {
       setLoading(false);
-    }, 1000);
-    return () => clearTimeout(timer);
+    }
   };
 
-  // Simulate Start Multipart Session
   const startSession = async () => {
     if (!isUserAuthenticated) {
       message.error('Authentication required to start a session.');
       return;
     }
     setLoading(true);
-    const timer = setTimeout(() => {
-      setSessionId('simulated-session-123');
-      setParts([]); // Clear any previous parts
-      message.success('Multipart session started! (Simulated)');
+    try {
+      const res = await fetch(
+        'https://rairo-pos-image-api.hf.space/start-receipt-session', // External AI endpoint
+        {
+          method: 'POST',
+        }
+      );
+      const data = await res.json();
+      if (data.success) {
+        setSessionId(data.session_id);
+        setParts([]); // Clear any previous parts
+        message.success('Multipart session started with AI!');
+      } else {
+        message.error(data.error || 'Failed to start multipart session with AI.');
+      }
+    } catch (error) {
+      console.error('Error starting AI session:', error);
+      message.error('Network error or AI service issue during session start.');
+    } finally {
       setLoading(false);
-    }, 500);
-    return () => clearTimeout(timer);
+    }
   };
 
-  // Simulate Add Part to Multipart Session
   const addPart = async (file: File) => {
     if (!sessionId) {
       message.error('Start a session first.');
@@ -140,15 +155,32 @@ export default function ReceiptProductUploader({
       return;
     }
     setLoading(true);
-    const timer = setTimeout(() => {
-      setParts((prev) => [...prev, file]);
-      message.success('Receipt part added! (Simulated)');
+    const formData = new FormData();
+    formData.append('image', file);
+
+    try {
+      const res = await fetch(
+        `https://rairo-pos-image-api.hf.space/add-receipt-part/${sessionId}`, // External AI endpoint
+        {
+          method: 'POST',
+          body: formData,
+        }
+      );
+      const data = await res.json();
+      if (data.success) {
+        setParts((prev) => [...prev, file]);
+        message.success(`Part ${data.parts_count || parts.length + 1} added to AI session!`);
+      } else {
+        message.error(data.error || 'Failed to add part to AI session.');
+      }
+    } catch (error) {
+      console.error('Error adding part to AI session:', error);
+      message.error('Network error or AI service issue during adding part.');
+    } finally {
       setLoading(false);
-    }, 500);
-    return () => clearTimeout(timer);
+    }
   };
 
-  // Simulate Process Multipart Session
   const processSession = async () => {
     if (!sessionId) {
       message.error('No session started.');
@@ -159,51 +191,131 @@ export default function ReceiptProductUploader({
       return;
     }
     setLoading(true);
-    const timer = setTimeout(() => {
-      setProducts(HARDCODED_RECEIPT_ITEMS.map(defaultProduct)); // Use same hardcoded data for simplicity
-      message.success('Session processed! (Simulated)');
+    try {
+      const res = await fetch(
+        `https://rairo-pos-image-api.hf.space/process-receipt-session/${sessionId}`, // External AI endpoint
+        {
+          method: 'POST',
+        }
+      );
+      const data = await res.json();
+      if (data.success) {
+        setProducts((data.data?.items || []).map(item => ({ ...defaultProduct(item), companyName })));
+        message.success('AI session processed!');
+        setSessionId(null); // End session after processing
+        setParts([]);
+      } else {
+        message.error(data.error || 'Failed to process AI session.');
+      }
+    } catch (error) {
+      console.error('Error processing AI session:', error);
+      message.error('Network error or AI service issue during session processing.');
+    } finally {
       setLoading(false);
-      setSessionId(null); // End session after processing
-      setParts([]);
-    }, 1500);
-    return () => clearTimeout(timer);
+    }
   };
 
-  // Simulate Process Bulk Receipts
   const processBulkReceipts = async (files: File[]) => {
     if (!isUserAuthenticated) {
       message.error('Authentication required for bulk processing.');
       return;
     }
     setLoading(true);
-    const timer = setTimeout(() => {
-      // For bulk, simulate combining items from multiple receipts
-      const combinedItems: ReceiptItem[] = [];
-      files.forEach(() => {
-        combinedItems.push(...HARDCODED_RECEIPT_ITEMS); // Add hardcoded items for each file
-      });
-      setProducts(combinedItems.map(defaultProduct));
-      message.success(`Bulk receipts processed! ${files.length} files (Simulated)`);
+    const formData = new FormData();
+    files.forEach(f => formData.append('images', f)); // 'images' should match the AI's expected field name
+
+    try {
+      const res = await fetch(
+        'https://rairo-pos-image-api.hf.space/bulk-process-receipts', // External AI endpoint
+        {
+          method: 'POST',
+          body: formData,
+        }
+      );
+      const data = await res.json();
+      if (res.ok && data.success) {
+        // Assuming the AI returns { success: true, results: [{ data: { items: [...] } }] }
+        setProducts(flattenItems(data.results || []).map(item => ({ ...defaultProduct(item), companyName })));
+        message.success(`Bulk receipts processed by AI! ${files.length} files.`);
+      } else {
+        message.error(data.error || 'Bulk processing failed by AI.');
+      }
+    } catch (error) {
+      console.error('Error processing bulk receipts with AI:', error);
+      message.error('Network error or AI service issue during bulk receipt processing.');
+    } finally {
       setLoading(false);
-    }, 2000);
-    return () => clearTimeout(timer);
+    }
   };
 
-  // Simulate saving all parsed products to the database
-  const saveAll = async (values: { products: any[] }) => {
+  // --- SAVE PRODUCTS TO YOUR BACKEND (PostgreSQL) ---
+  const saveAll = async (values: { products: ProductToSave[] }) => {
     if (!isUserAuthenticated) {
       message.error('Authentication required to save products.');
       return;
     }
     setLoading(true);
-    const timer = setTimeout(() => {
-      console.log('Simulating saving products:', values.products);
-      message.success('All products saved successfully! (Simulated)');
-      setProducts([]); // Clear products after saving
-      if (onComplete) onComplete(); // Trigger parent callback
+    let successfulSaves = 0;
+    let failedSaves = 0;
+
+    // Explicitly get the token from localStorage here, similar to ProductsPage
+    const currentToken = localStorage.getItem('token');
+    if (!currentToken) {
+      message.error('Authentication token missing. Please log in again.');
       setLoading(false);
-    }, 1500);
-    return () => clearTimeout(timer);
+      return;
+    }
+
+    for (const product of values.products) {
+      try {
+        const productToSave = {
+          name: product.name,
+          description: '', // Add description if available from receipt or form
+          unit_price: Number(product.sellingPrice),
+          cost_price: null, // Receipt AI might not provide cost price, set to null or default
+          is_service: product.type === 'service',
+          stock_quantity: product.type === 'product' ? Number(product.qty || 0) : null,
+          unit: product.type === 'product' ? (product.unit || 'item') : null,
+          sku: null, // Add SKU if available from receipt or form
+          min_quantity: null, // Add min/max qty if available or set defaults
+          max_quantity: null,
+          available_value: product.type === 'service' ? Number(product.qty || 0) : null, // For services, qty can be available_value
+          company_name: companyName, // Ensure this is correctly passed
+        };
+
+        const res = await fetch('https://quantnow.onrender.com/products-services', { // Your backend endpoint for adding products
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${currentToken}`, // Use the explicitly fetched token
+          },
+          body: JSON.stringify(productToSave),
+        });
+
+        if (res.ok) {
+          successfulSaves++;
+        } else {
+          const errorData = await res.json();
+          console.error(`Failed to save product ${product.name}:`, errorData.message || 'Unknown error');
+          failedSaves++;
+        }
+      } catch (error) {
+        console.error(`Error saving product ${product.name}:`, error);
+        failedSaves++;
+      }
+    }
+
+    if (successfulSaves > 0) {
+      message.success(`${successfulSaves} product(s) saved successfully to your database!`);
+    }
+    if (failedSaves > 0) {
+      message.error(`${failedSaves} product(s) failed to save. Check console for details.`);
+    }
+
+    setProducts([]); // Clear products after attempting to save all
+    if (onComplete) onComplete(); // Trigger parent callback to refresh product list
+
+    setLoading(false);
   };
 
   // --- RENDER ---
@@ -263,7 +375,6 @@ export default function ReceiptProductUploader({
                   >
                     <InputNumber min={1} style={{ width: '100%' }} disabled={loading} />
                   </Form.Item>
-                  {/* Add purchasePrice and unit fields if needed for editing here */}
                 </Card>
               ) : (
                 <Row key={field.key} gutter={8} style={{ marginBottom: 8 }}>

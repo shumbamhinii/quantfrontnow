@@ -328,22 +328,22 @@ const PayslipGenerator: React.FC<PayslipGeneratorProps> = ({ employee }) => {
     {
       key: 'bank',
       label: 'Bank',
-      children: employee.bank_name || 'FNB' // Directly use employee.bank_name
+      children: employee.bank_name || 'Null' // Directly use employee.bank_name
     },
     {
       key: 'holder',
       label: 'Account Holder',
-      children: employee.account_holder || 'Christian Ish' // Directly use employee.account_holder
+      children: employee.account_holder || 'Null' // Directly use employee.account_holder
     },
     {
       key: 'number',
       label: 'Account Number',
-      children: employee.account_number || '446755895' // Directly use employee.account_number
+      children: employee.account_number || 'Null' // Directly use employee.account_number
     },
     {
       key: 'branch',
       label: 'Branch Code',
-      children: employee.branch_code || '124453' // Directly use employee.branch_code
+      children: employee.branch_code || 'Null' // Directly use employee.branch_code
     }
   ];
 

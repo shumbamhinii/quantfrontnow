@@ -17,7 +17,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   login: () => void;
   logout: () => void;
-  userRole: string | null;
+  userRoles: string[];
   userName: string | null;
 }
 
@@ -37,8 +37,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     localStorage.getItem('isAuthenticated') === 'true'
   );
 
-  const [userRole, setUserRole] = useState<string | null>(
-    localStorage.getItem('userRole')
+  const [userRoles, setUserRoles] = useState<string[]>(
+    JSON.parse(localStorage.getItem('userRoles') || '[]')
   );
 
   const [userName, setUserName] = useState<string | null>(
@@ -47,14 +47,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const login = () => {
     setIsAuthenticated(true);
-    setUserRole(localStorage.getItem('userRole'));
+    setUserRoles(JSON.parse(localStorage.getItem('userRoles') || '[]'));
     setUserName(localStorage.getItem('userName'));
     localStorage.setItem('isAuthenticated', 'true');
   };
 
   const logout = () => {
     setIsAuthenticated(false);
-    setUserRole(null);
+    setUserRoles([]);
     setUserName(null);
     localStorage.clear();
   };
@@ -65,7 +65,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isAuthenticated,
         login,
         logout,
-        userRole,
+        userRoles,
         userName,
       }}
     >
@@ -73,6 +73,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     </AuthContext.Provider>
   );
 };
+
 
 export function AuthPage() {
   const [mode, setMode] = useState<'login' | 'register'>('login');
@@ -113,20 +114,25 @@ export function AuthPage() {
       const data = await res.json();
 
       if (res.ok) {
-        if (mode === 'login') {
+if (mode === 'login') {
   const user = data.user;
   const companyId = user.parent_user_id || user.user_id;
+ const roles = Array.isArray(user.roles)
+  ? user.roles
+  : typeof user.role === 'string'
+    ? [user.role]
+    : [];
 
-  // Store everything in localStorage
+
+  // ✅ Store everything
   localStorage.setItem('token', data.token);
   localStorage.setItem('isAuthenticated', 'true');
   localStorage.setItem('userId', user.user_id);
   localStorage.setItem('companyId', companyId);
-  localStorage.setItem('userRole', user.role || 'user');
+  localStorage.setItem('userRoles', JSON.stringify(roles));
   localStorage.setItem('userName', user.name || '');
 
-  login();
-
+  login(); // Triggers context update
   toast({
     title: '✅ Login Successful',
     description: `Welcome back, ${user.name || 'User'}!`,
@@ -134,6 +140,8 @@ export function AuthPage() {
 
   navigate('/');
 }
+
+
  else {
           toast({
             title: '✅ Registration Successful',
@@ -253,6 +261,8 @@ export function AuthPage() {
 
 export const getUserId = () => localStorage.getItem('userId');
 export const getCompanyId = () => localStorage.getItem('companyId');
-export const getUserRole = () => localStorage.getItem('userRole');
+export const getUserRoles = (): string[] => JSON.parse(localStorage.getItem('userRoles') || '[]');
+
 export const getUserName = () => localStorage.getItem('userName');
-export const isUserAdmin = () => getUserRole() === 'admin';
+export const isUserAdmin = () => getUserRoles().includes('admin');
+

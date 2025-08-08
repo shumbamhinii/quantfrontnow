@@ -20,7 +20,7 @@ import {
 import { useMediaQuery } from 'react-responsive';
 import POSDashboard from '../../pages/POSDashboard';
 import { useAuth } from '../../AuthPage';
-import type { Product } from '../../types/type';
+import type { Product } from '../../types/type'; // Assuming Product type is defined here
 import PlusOutlined from '@ant-design/icons/lib/icons/PlusOutlined';
 import EditOutlined from '@ant-design/icons/lib/icons/EditOutlined';
 import DeleteOutlined from '@ant-design/icons/lib/icons/DeleteOutlined';
@@ -35,8 +35,8 @@ type ProductFormValues = {
   purchasePrice?: number | string;
   unit?: string;
   qty?: number;
-  minQty?: number; // Added based on the previous layout
-  maxQty?: number; // Added based on the previous layout
+  minQty?: number;
+  maxQty?: number;
   availableValue?: number;
 };
 
@@ -55,9 +55,9 @@ function useProductSalesStats(products: Product[], isAuthenticated: boolean, mes
     // Simulate fetching sales stats from a backend if you had an endpoint for it.
     // Example:
     // fetch('https://quantnow.onrender.com/sales/bestsellers', { /* headers */ })
-    //     .then(res => res.json())
-    //     .then(data => setBestsellers(data))
-    //     .catch(err => messageApi.error('Failed to fetch sales stats'));
+    //     .then(res => res.json())
+    //     .then(data => setBestsellers(data))
+    //     .catch(err => messageApi.error('Failed to fetch sales stats'));
 
     // For now, returning an empty object as there's no backend endpoint defined for it in the provided code
     setBestsellers({});
@@ -114,11 +114,9 @@ const ProductsPage = () => {
         qty: p.stock_quantity,
         unit: p.unit,
         companyName: 'Ngenge Stores', // Assuming this is set on the frontend or comes from backend
-        availableValue: p.is_service ? p.stock_quantity : undefined,
-        // Assuming minQty and maxQty are not currently in your backend response for this mapping,
-        // if they are, you'll need to add them to the mapping.
-        minQty: p.min_stock_quantity, // Placeholder - adjust if your backend provides this
-        maxQty: p.max_stock_quantity, // Placeholder - adjust if your backend provides this
+        availableValue: p.is_service ? p.available_value : undefined, // Mapped from available_value for services
+        minQty: p.min_quantity, // Correctly map min_quantity
+        maxQty: p.max_quantity, // Correctly map max_quantity
       }));
       setProducts(transformed);
       messageApi.success('Products loaded successfully.');
@@ -139,16 +137,18 @@ const ProductsPage = () => {
     if (modalVisible || manualDrawerOpen) {
       if (editingProduct) {
         // Edit mode
-        form.setFieldsValue({
-          ...editingProduct,
+        const fieldsToSet = {
+          name: editingProduct.name,
           sellingPrice: editingProduct.unitPrice,
           purchasePrice: editingProduct.purchasePrice,
           type: editingProduct.type,
+          unit: editingProduct.unit,
           qty: editingProduct.qty,
           minQty: editingProduct.minQty,
           maxQty: editingProduct.maxQty,
           availableValue: editingProduct.availableValue,
-        });
+        };
+        form.setFieldsValue(fieldsToSet);
         setFormType(editingProduct.type);
       } else {
         // Add mode
@@ -157,8 +157,7 @@ const ProductsPage = () => {
         setFormType('product');
       }
     }
-    // eslint-disable-next-line
-  }, [modalVisible, manualDrawerOpen, editingProduct]); // form is intentionally excluded from dependencies to avoid infinite loops
+  }, [modalVisible, manualDrawerOpen, editingProduct, form]);
 
   // Always reset everything on close
   const closeForm = () => {
@@ -188,26 +187,27 @@ const ProductsPage = () => {
     const isNew = !editingProduct;
     const endpoint = isNew
       ? 'https://quantnow.onrender.com/products-services'
-      : `https://quantnow.onrender.com/products-services/${editingProduct!.id}`; // Use ! as editingProduct is guaranteed if not new
+      : `https://quantnow.onrender.com/products-services/${editingProduct!.id}`;
 
     const method = isNew ? 'POST' : 'PUT';
 
-    try {
-      const body = {
-        name: values.name,
-        description: '', // You might want to add a description field to your form/type
-        unit_price: Number(values.sellingPrice),
-        cost_price: values.type === 'product' ? Number(values.purchasePrice || 0) : null,
-        is_service: values.type === 'service',
-        stock_quantity: values.type === 'product'
-          ? Number(values.qty || 0)
-          : Number(values.availableValue || 0),
-        unit: values.type === 'product' ? (values.unit || 'item') : null,
-        sku: null, // You might want to add an SKU field
-        min_stock_quantity: values.type === 'product' ? Number(values.minQty || 0) : null,
-        max_stock_quantity: values.type === 'product' ? Number(values.maxQty || 0) : null,
-      };
+    // Construct the body based on formType
+    const body = {
+      name: values.name,
+      description: '', // You might want to add a description field to your form/type
+      unit_price: Number(values.sellingPrice),
+      cost_price: values.type === 'product' ? Number(values.purchasePrice || 0) : null,
+      is_service: values.type === 'service',
+      // Conditional assignment for stock_quantity, min_quantity, max_quantity, available_value
+      stock_quantity: values.type === 'product' ? Number(values.qty || 0) : null, // Only for products
+      unit: values.type === 'product' ? (values.unit || 'item') : null,
+      sku: null, // You might want to add an SKU field
+      min_quantity: values.type === 'product' ? Number(values.minQty || 0) : null, // Only for products
+      max_quantity: values.type === 'product' ? Number(values.maxQty || 0) : null, // Only for products
+      available_value: values.type === 'service' ? Number(values.availableValue || 0) : null, // Only for services
+    };
 
+    try {
       const res = await fetch(endpoint, {
         method,
         headers: {
@@ -274,19 +274,17 @@ const ProductsPage = () => {
     }
     try {
       setLoading(true);
-      // Assuming your backend endpoint for stock adjustment is products-services/:id/stock
-      // and it accepts adjustmentQuantity and updatedCostPrice (if changing)
       const res = await fetch(
         `https://quantnow.onrender.com/products-services/${restockProduct.id}/stock`,
         {
-          method: 'PUT', // Or POST, depending on your API design for stock adjustments
+          method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
             Authorization: `Bearer ${localStorage.getItem('token')}`,
           },
           body: JSON.stringify({
             adjustmentQuantity: values.qty,
-            updatedCostPrice: values.purchasePrice, // Send the new purchase price
+            updatedCostPrice: values.purchasePrice,
           }),
         }
       );
@@ -332,6 +330,18 @@ const ProductsPage = () => {
       dataIndex: 'qty',
       key: 'qty',
       render: (qty, rec) => rec.unit ? `${qty ?? 0} ${rec.unit}` : qty ?? 0,
+    },
+    {
+      title: 'Min Qty',
+      dataIndex: 'minQty',
+      key: 'minQty',
+      render: (minQty) => minQty ?? '-',
+    },
+    {
+      title: 'Max Qty',
+      dataIndex: 'maxQty',
+      key: 'maxQty',
+      render: (maxQty) => maxQty ?? '-',
     },
     {
       title: 'Price',
@@ -484,10 +494,19 @@ const ProductsPage = () => {
 
       {formType === 'product' && (
         <>
-          <Form.Item name='unit' label='Unit' rules={[{ required: true, message: 'Please enter unit' }]}>
+          <Form.Item
+            name='unit'
+            label='Unit'
+            rules={[{ required: true, message: 'Please enter unit' }]}
+          >
             <Input placeholder='e.g. kg, litre, box' />
           </Form.Item>
-          <Form.Item name='qty' label='Quantity (Initial Stock)'> {/* Changed label for clarity on new product */}
+          {/* ADDED required rule for qty */}
+          <Form.Item
+            name='qty'
+            label='Quantity (Initial Stock)'
+            rules={[{ required: true, message: 'Please enter initial stock quantity' }]}
+          >
             <InputNumber min={0} style={{ width: '100%' }} />
           </Form.Item>
           <Form.Item required style={{ marginBottom: 0 }}>
@@ -622,6 +641,8 @@ const ProductsPage = () => {
                         <strong>Current Quantity: {product.qty ?? 0}</strong>
                         {product.unit ? ` ${product.unit}` : ''}
                       </p>
+                      <p><strong>Min Quantity:</strong> {product.minQty ?? '-'}</p>
+                      <p><strong>Max Quantity:</strong> {product.maxQty ?? '-'}</p>
                     </Card>
                   ))}
                 </Space>
