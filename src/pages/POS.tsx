@@ -74,7 +74,7 @@ type CartItem = (ProductDB | {
 type PaymentType = 'Cash' | 'Bank' | 'Credit';
 // --- END: MODIFIED TYPES TO MATCH BACKEND API ---
 
-const API_BASE_URL = 'https://quantnow.onrender.com'; // IMPORTANT: Replace with your actual backend API URL
+const API_BASE_URL = 'http://localhost:3000'; // IMPORTANT: Replace with your actual backend API URL
 
 // Define fixed VAT rate options (same as QuotationForm)
 const VAT_OPTIONS = [

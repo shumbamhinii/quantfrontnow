@@ -13,7 +13,7 @@ import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '../../AuthPage'; // Import useAuth
 
-const API_BASE_URL = 'https://quantnow.onrender.com'; // Changed to localhost:3000 based on previous context
+const API_BASE_URL = 'http://localhost:3000'; // Changed to localhost:3000 based on previous context
 
 interface RevenueDataPoint {
   month: string;
