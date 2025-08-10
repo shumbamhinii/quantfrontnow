@@ -51,7 +51,7 @@ const [confirmPassword, setConfirmPassword] = useState('');
     const fetchProfile = async () => {
       if (!isAuthenticated || !token) return;
       try {
-        const res = await fetch('http://localhost:3000/api/profile', {
+        const res = await fetch('https://quantnow.onrender.com/api/profile', {
           headers: { Authorization: `Bearer ${token}` },
         });
         if (!res.ok) throw new Error('Failed to load');
@@ -117,7 +117,7 @@ const handleSave = async () => {
     };
 
     // Update profile
-    const res = await fetch('http://localhost:3000/api/profile', {
+    const res = await fetch('https://quantnow.onrender.com/api/profile', {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -135,7 +135,7 @@ const handleSave = async () => {
         return;
       }
 
-      const passRes = await fetch('http://localhost:3000/api/profile/password', {
+      const passRes = await fetch('https://quantnow.onrender.com/api/profile/password', {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',

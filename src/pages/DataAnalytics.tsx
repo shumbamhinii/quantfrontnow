@@ -122,13 +122,13 @@ const DataAnalytics = () => {
         payrollDistributionRes,
         topSellingProductsRes,
       ] = await Promise.all([
-        fetch('http://localhost:3000/api/charts/revenue-trend', { headers }),
-        fetch('http://localhost:3000/api/charts/transaction-volume', { headers }),
-        fetch('http://localhost:3000/api/charts/customer-lifetime-value', { headers }),
-        fetch('http://localhost:3000/api/charts/product-stock-levels', { headers }),
-        fetch('http://localhost:3000/api/charts/transaction-type-breakdown', { headers }),
-        fetch('http://localhost:3000/api/charts/payroll-distribution', { headers }),
-        fetch('http://localhost:3000/api/charts/top-selling-products', { headers }),
+        fetch('https://quantnow.onrender.com/api/charts/revenue-trend', { headers }),
+        fetch('https://quantnow.onrender.com/api/charts/transaction-volume', { headers }),
+        fetch('https://quantnow.onrender.com/api/charts/customer-lifetime-value', { headers }),
+        fetch('https://quantnow.onrender.com/api/charts/product-stock-levels', { headers }),
+        fetch('https://quantnow.onrender.com/api/charts/transaction-type-breakdown', { headers }),
+        fetch('https://quantnow.onrender.com/api/charts/payroll-distribution', { headers }),
+        fetch('https://quantnow.onrender.com/api/charts/top-selling-products', { headers }),
       ]);
 
       // Check all responses for success

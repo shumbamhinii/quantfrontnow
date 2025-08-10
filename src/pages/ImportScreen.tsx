@@ -578,7 +578,7 @@ const EditableTransactionTable = ({ transactions: initialTransactions, accounts,
 // ------------ Main ------------
 const ChatInterface = () => {
   const RAIRO_API_BASE_URL = 'https://rairo-stmt-api.hf.space';
-  const API_BASE_URL = 'http://localhost:3000';
+  const API_BASE_URL = 'https://quantnow.onrender.com';
 
   const [messages, setMessages] = useState<Array<{ id: string; sender: string; content: string | JSX.Element }>>([]);
   const [accounts, setAccounts] = useState<Account[]>([]);
@@ -1051,7 +1051,7 @@ const ChatInterface = () => {
     );
 
     try {
-      const API_BASE_URL = 'http://localhost:3000';
+      const API_BASE_URL = 'https://quantnow.onrender.com';
       const downloadUrl = `${API_BASE_URL}/generate-financial-document?documentType=${selectedDocumentType}&startDate=${documentStartDate}&endDate=${documentEndDate}`;
       const response = await fetch(downloadUrl, { method: 'GET', headers: getAuthHeaders() });
       if (!response.ok) {

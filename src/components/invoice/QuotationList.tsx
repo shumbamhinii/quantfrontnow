@@ -55,7 +55,7 @@ declare global {
 }
 
 // Define API Base URL
-const API_BASE_URL = 'http://localhost:3000';
+const API_BASE_URL = 'https://quantnow.onrender.com';
 
 // --- Interfaces to match backend API responses for Quotations ---
 interface QuotationLineItem {

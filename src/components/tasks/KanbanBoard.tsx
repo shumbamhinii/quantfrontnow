@@ -192,7 +192,7 @@ export function KanbanBoard() {
     setIsLoading(true);
     try {
       // Fetch projects first
-      const projectsResponse = await fetch('http://localhost:3000/api/projects', {
+      const projectsResponse = await fetch('https://quantnow.onrender.com/api/projects', {
         headers: getAuthHeaders(),
       });
       if (!projectsResponse.ok) {
@@ -202,7 +202,7 @@ export function KanbanBoard() {
       setProjects(projectsData);
 
       // Fetch tasks
-      const tasksResponse = await fetch('http://localhost:3000/api/tasks', {
+      const tasksResponse = await fetch('https://quantnow.onrender.com/api/tasks', {
         headers: getAuthHeaders(),
       });
       if (!tasksResponse.ok) {
@@ -320,7 +320,7 @@ export function KanbanBoard() {
 
       try {
         // API call to update task status
-        const response = await fetch(`http://localhost:3000/api/tasks/${activeTask.id}`, {
+        const response = await fetch(`https://quantnow.onrender.com/api/tasks/${activeTask.id}`, {
           method: 'PUT',
           headers: {
             'Content-Type': 'application/json',
@@ -393,7 +393,7 @@ export function KanbanBoard() {
     );
 
     try {
-      const response = await fetch('http://localhost:3000/api/tasks', {
+      const response = await fetch('https://quantnow.onrender.com/api/tasks', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -443,7 +443,7 @@ export function KanbanBoard() {
     const statusFromProgress = getStatusFromProgress(taskData.progress_percentage);
 
     try {
-      const response = await fetch(`http://localhost:3000/api/tasks/${taskToEdit.id}`, {
+      const response = await fetch(`https://quantnow.onrender.com/api/tasks/${taskToEdit.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -485,7 +485,7 @@ export function KanbanBoard() {
       return;
     }
     try {
-      const response = await fetch(`http://localhost:3000/api/tasks/${taskId}`, {
+      const response = await fetch(`https://quantnow.onrender.com/api/tasks/${taskId}`, {
         method: 'DELETE',
         headers: getAuthHeaders(), // Include auth headers
       });
@@ -518,7 +518,7 @@ export function KanbanBoard() {
       return;
     }
     try {
-      const response = await fetch('http://localhost:3000/api/projects', {
+      const response = await fetch('https://quantnow.onrender.com/api/projects', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -558,7 +558,7 @@ export function KanbanBoard() {
     }
 
     try {
-      const response = await fetch(`http://localhost:3000/api/projects/${activeProject.id}`, {
+      const response = await fetch(`https://quantnow.onrender.com/api/projects/${activeProject.id}`, {
         method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
@@ -598,7 +598,7 @@ export function KanbanBoard() {
     }
 
     try {
-      const response = await fetch(`http://localhost:3000/api/projects/${projectToDelete.id}`, {
+      const response = await fetch(`https://quantnow.onrender.com/api/projects/${projectToDelete.id}`, {
         method: 'DELETE',
         headers: getAuthHeaders(), // Include auth headers
       });
