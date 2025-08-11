@@ -148,7 +148,105 @@ const Financials = () => {
   // ------------------------------------------------------------------
   // Fetch a statement JSON from backend (same endpoint as PDF)
   // ------------------------------------------------------------------
- const fetchServerStatement = useCallback(
+
+
+// ADD THESE HELPERS (e.g., above fetchServerStatement)
+const toArray = (v: any): any[] => {
+  if (Array.isArray(v)) return v;
+  if (v && typeof v === 'object') return Object.values(v);
+  return [];
+};
+
+const num = (n: any) => Number(n ?? 0);
+
+const normalizeBalanceSheet = (raw: any) => {
+  const assetsRaw =
+    raw?.assets ?? raw?.data?.assets ?? raw?.sections?.assets ?? [];
+  const liabilitiesRaw =
+    raw?.liabilities ?? raw?.data?.liabilities ?? raw?.sections?.liabilities ?? [];
+  const equityRaw =
+    raw?.equity ?? raw?.data?.equity ?? raw?.sections?.equity ?? [];
+
+  const assets = toArray(assetsRaw).map((a: any) => ({
+    item: a.item ?? a.name ?? a.label ?? '',
+    amount: num(a.amount ?? a.value),
+    isTotal: !!(a.isTotal || /total/i.test(String(a.item ?? a.name ?? '')))
+  }));
+
+  const liabilities = toArray(liabilitiesRaw).map((l: any) => ({
+    item: l.item ?? l.name ?? l.label ?? '',
+    amount: num(l.amount ?? l.value),
+    isTotal: !!(l.isTotal || /total/i.test(String(l.item ?? l.name ?? '')))
+  }));
+
+  const equity = toArray(equityRaw).map((e: any) => ({
+    item: e.item ?? e.name ?? e.label ?? '',
+    amount: num(e.amount ?? e.value),
+    isTotal: !!(e.isTotal || /total/i.test(String(e.item ?? e.name ?? '')))
+  }));
+
+  return { assets, liabilities, equity };
+};
+
+const normalizeCashflow = (raw: any) => {
+  // Try array first
+  let sections = raw?.sections ?? raw?.data?.sections;
+
+  // If not an array, build it from typical keys
+  if (!Array.isArray(sections)) {
+    const candidates = ['operating', 'investing', 'financing'];
+    sections = candidates
+      .filter((k) => raw?.[k] || raw?.data?.[k])
+      .map((k) => {
+        const node = raw?.[k] ?? raw?.data?.[k];
+        const items = toArray(node?.items ?? node);
+        const total =
+          num(node?.total) ||
+          items.reduce((s: number, it: any) => s + num(it?.amount ?? it?.value), 0);
+        return {
+          category: (node?.label ?? k).replace(/^./, (c: string) => c.toUpperCase()),
+          items: items.map((it: any) => ({
+            item: it.item ?? it.name ?? it.label ?? '',
+            amount: num(it.amount ?? it.value),
+            isTotal: false,
+          })),
+          total,
+          isSectionTotal: true,
+        };
+      });
+  } else {
+    // sections is an array; normalise its shape
+    sections = sections.map((s: any) => ({
+      category: s.label ?? s.category ?? '',
+      items: toArray(s.items).map((it: any) => ({
+        item: it.item ?? it.name ?? it.label ?? '',
+        amount: num(it.amount ?? it.value),
+        isTotal: false,
+      })),
+      total: num(s.total),
+      isSectionTotal: true,
+    }));
+  }
+
+  // Optional global net change
+  const netChange =
+    raw?.totals?.netChange ??
+    raw?.data?.totals?.netChange ??
+    raw?.netChange ??
+    raw?.data?.netChange;
+  if (typeof netChange === 'number') {
+    sections.push({
+      category: 'Net Increase / (Decrease) in Cash',
+      items: [],
+      total: num(netChange),
+      isSectionTotal: true,
+    });
+  }
+
+  return sections;
+};
+
+const fetchServerStatement = useCallback(
   async (type: typeof reportTypes[number]['id']) => {
     if (!token) return;
 
@@ -157,70 +255,55 @@ const Financials = () => {
         documentType: type,
         startDate: fromDate,
         endDate: toDate,
-        format: 'json', // <<— IMPORTANT
+        format: 'json',
       });
       const url = `${API_BASE_URL}/generate-financial-document?${qs.toString()}`;
 
       const res = await fetch(url, {
-        headers: {
-          'Accept': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
+        headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
       });
-
       if (!res.ok) {
         throw new Error(`Failed to fetch ${type} JSON: ${res.status} ${res.statusText}`);
       }
 
       const ct = res.headers.get('content-type') || '';
       if (!ct.includes('application/json')) {
-        // Safety: server returned a PDF or HTML by mistake
         const text = await res.text();
-        throw new Error(`Expected JSON but got ${ct}. First bytes: ${text.slice(0, 20)}...`);
+        throw new Error(`Expected JSON but got ${ct}. First bytes: ${text.slice(0, 40)}...`);
       }
 
       const payload = await res.json();
-      const data = payload?.data ?? payload; // backend returns {type, data}
+      const data = payload?.data ?? payload;
 
       if (type === 'income-statement') {
-        const lines = data?.lines ?? [];
-        setIncomeStatementData(lines.map((l: any) => ({
-          item: l.item, amount: Number(l.amount || 0), type: l.type || 'detail',
-        })));
+        const linesRaw =
+          data?.lines ?? data?.data?.lines ?? data?.sections ?? [];
+        const lines = toArray(linesRaw).map((l: any) => ({
+          item: l.item ?? l.name ?? l.label ?? '',
+          amount: num(l.amount ?? l.value),
+          type: l.type ?? 'detail',
+        }));
+        setIncomeStatementData(lines);
       }
 
       if (type === 'trial-balance') {
-        const rows = data?.rows ?? data?.data?.rows ?? [];
-        setTrialBalanceData(rows.map((r: any) => ({
-          account: r.name, debit: Number(r.debit || 0), credit: Number(r.credit || 0),
-        })));
+        const rowsRaw = data?.rows ?? data?.data?.rows ?? [];
+        const rows = toArray(rowsRaw).map((r: any) => ({
+          account: r.account ?? r.name ?? r.label ?? '',
+          debit: num(r.debit),
+          credit: num(r.credit),
+        }));
+        setTrialBalanceData(rows);
       }
 
       if (type === 'balance-sheet') {
-        setBalanceSheetData({
-          assets: (data.assets || []).map((a: any) => ({ item: a.item, amount: Number(a.amount || 0), isTotal: !!a.isTotal })),
-          liabilities: (data.liabilities || []).map((l: any) => ({ item: l.item, amount: Number(l.amount || 0), isTotal: !!l.isTotal })),
-          equity: (data.equity || []).map((e: any) => ({ item: e.item, amount: Number(e.amount || 0), isTotal: !!e.isTotal })),
-        });
+        const normalized = normalizeBalanceSheet(data);
+        setBalanceSheetData(normalized);
       }
 
       if (type === 'cash-flow-statement') {
-        const sections = data?.sections ?? [];
-        const formatted = sections.map((s: any) => ({
-          category: s.label || s.category,
-          items: (s.items || []).map((i: any) => ({ item: i.item, amount: Number(i.amount || 0), isTotal: false })),
-          total: Number(s.total || 0),
-          isSectionTotal: true,
-        }));
-        if (typeof data?.totals?.netChange === 'number') {
-          formatted.push({
-            category: 'Net Increase / (Decrease) in Cash',
-            items: [],
-            total: Number(data.totals.netChange),
-            isSectionTotal: true,
-          });
-        }
-        setCashflowData(formatted);
+        const normalizedSections = normalizeCashflow(data);
+        setCashflowData(normalizedSections);
       }
     } catch (err: any) {
       console.error(err);
@@ -233,6 +316,7 @@ const Financials = () => {
   },
   [fromDate, toDate, token, toast]
 );
+
 
 
   // Fetch current tab’s report whenever date range or tab changes
