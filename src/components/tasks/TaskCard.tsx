@@ -6,9 +6,8 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
   DialogDescription,
-  DialogFooter, // Added DialogFooter here
+  DialogFooter,
 } from '@/components/ui/dialog';
 import {
   AlertDialog,
@@ -30,9 +29,6 @@ import { TaskForm, type TaskFormData } from './TaskForm';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-// TaskCard itself doesn't make API calls directly, but it's good practice
-// to ensure it's rendered within an authenticated context if needed.
-// No direct 'useAuth' or 'token' needed here unless it were to fetch dynamic data.
 
 interface Task {
   id: string;
@@ -45,7 +41,8 @@ interface Task {
   progress_percentage: number;
   created_at: string;
   updated_at: string;
-  assignee?: string;
+  assignee_id?: string | null;     // <-- id
+  assignee_name?: string | null;   // <-- display name
   project_id?: string | null;
   project_name?: string | null;
 }
@@ -101,10 +98,11 @@ export function TaskCard({
       title: updatedFormTask.title,
       description: updatedFormTask.description,
       priority: updatedFormTask.priority,
-      assignee: updatedFormTask.assignee,
+      assignee_id: updatedFormTask.assignee_id ?? null,
+      // NOTE: assignee_name will be refreshed from backend on refetch; keep existing until then
       due_date: updatedFormTask.due_date,
       progress_percentage: updatedFormTask.progress_percentage,
-      project_id: updatedFormTask.project_id,
+      project_id: updatedFormTask.project_id ?? null,
     });
     setShowEditForm(false);
   };
@@ -129,7 +127,7 @@ export function TaskCard({
     setShowOverviewDialog(true);
   };
 
-  // Render a "tablet" view for "Done" tasks
+  // "Done" compact card
   if (task.status === 'Done') {
     return (
       <motion.div
@@ -150,7 +148,6 @@ export function TaskCard({
             </span>
           </CardContent>
 
-          {/* Drag handle and Delete for Done tasks */}
           <div className="flex items-center gap-1">
             <Button
               variant="ghost"
@@ -182,87 +179,66 @@ export function TaskCard({
                 <AlertDialogHeader>
                   <AlertDialogTitle>Delete Task</AlertDialogTitle>
                   <AlertDialogDescription>
-                    Are you sure you want to delete "{task.title}"? This cannot be
-                    undone.
+                    Are you sure you want to delete "{task.title}"? This cannot be undone.
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
                   <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction onClick={handleDeleteConfirm}>
-                    Delete
-                  </AlertDialogAction>
+                  <AlertDialogAction onClick={handleDeleteConfirm}>Delete</AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
           </div>
         </Card>
 
-        {/* Task Overview Dialog for Done tasks */}
+        {/* Overview Dialog */}
         <Dialog open={showOverviewDialog} onOpenChange={setShowOverviewDialog}>
           <DialogContent className="max-w-md">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
                 <Info className="h-5 w-5" /> Task Overview: {task.title}
               </DialogTitle>
-              <DialogDescription>
-                Detailed information about this task.
-              </DialogDescription>
+              <DialogDescription>Detailed information about this task.</DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
               <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="title" className="text-right">
-                  Title
-                </Label>
-                <Input id="title" defaultValue={task.title} readOnly className="col-span-3" />
+                <Label className="text-right">Title</Label>
+                <Input defaultValue={task.title} readOnly className="col-span-3" />
               </div>
               {task.description && (
                 <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="description" className="text-right">
-                    Description
-                  </Label>
-                  <Textarea id="description" defaultValue={task.description} readOnly className="col-span-3" />
+                  <Label className="text-right">Description</Label>
+                  <Textarea defaultValue={task.description} readOnly className="col-span-3" />
                 </div>
               )}
               <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="status" className="text-right">
-                  Status
-                </Label>
-                <Input id="status" defaultValue={task.status} readOnly className="col-span-3" />
+                <Label className="text-right">Status</Label>
+                <Input defaultValue={task.status} readOnly className="col-span-3" />
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="priority" className="text-right">
-                  Priority
-                </Label>
-                <Input id="priority" defaultValue={task.priority} readOnly className="col-span-3" />
+                <Label className="text-right">Priority</Label>
+                <Input defaultValue={task.priority} readOnly className="col-span-3" />
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="progress" className="text-right">
-                  Progress
-                </Label>
-                <Input id="progress" defaultValue={`${task.progress_percentage}%`} readOnly className="col-span-3" />
+                <Label className="text-right">Progress</Label>
+                <Input defaultValue={`${task.progress_percentage}%`} readOnly className="col-span-3" />
               </div>
-              {task.assignee && (
+              {task.assignee_name && (
                 <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="assignee" className="text-right">
-                    Assignee
-                  </Label>
-                  <Input id="assignee" defaultValue={task.assignee} readOnly className="col-span-3" />
+                  <Label className="text-right">Assignee</Label>
+                  <Input defaultValue={task.assignee_name} readOnly className="col-span-3" />
                 </div>
               )}
               {task.due_date && (
                 <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="dueDate" className="text-right">
-                    Due Date
-                  </Label>
-                  <Input id="dueDate" defaultValue={new Date(task.due_date).toLocaleDateString()} readOnly className="col-span-3" />
+                  <Label className="text-right">Due Date</Label>
+                  <Input defaultValue={new Date(task.due_date).toLocaleDateString()} readOnly className="col-span-3" />
                 </div>
               )}
               {task.project_name && (
                 <div className="grid grid-cols-4 items-center gap-4">
-                  <Label htmlFor="projectName" className="text-right">
-                    Project
-                  </Label>
-                  <Input id="projectName" defaultValue={task.project_name} readOnly className="col-span-3" />
+                  <Label className="text-right">Project</Label>
+                  <Input defaultValue={task.project_name} readOnly className="col-span-3" />
                 </div>
               )}
             </div>
@@ -275,7 +251,7 @@ export function TaskCard({
     );
   }
 
-  // Original detailed view for "To Do" and "In Progress" tasks
+  // Default detailed card
   return (
     <motion.div
       ref={setNodeRef}
@@ -289,13 +265,10 @@ export function TaskCard({
     >
       <Card className="hover:shadow-lg transition-all duration-200 bg-white border border-gray-200 flex flex-col h-fit">
         <CardContent className="p-3 space-y-3 flex-1 flex-col">
-          {/* Title and drag handle */}
           <div className="flex justify-between items-center gap-2">
             <h4 className="font-semibold text-sm text-gray-900 line-clamp-2 leading-5 flex-1">
               {task.title}
             </h4>
-
-            {/* Drag handle only */}
             <Button
               variant="ghost"
               size="sm"
@@ -310,23 +283,15 @@ export function TaskCard({
           </div>
 
           {task.description && (
-            <p className="text-xs text-gray-600 line-clamp-2 leading-4">
-              {task.description}
-            </p>
+            <p className="text-xs text-gray-600 line-clamp-2 leading-4">{task.description}</p>
           )}
 
           <div className="flex flex-wrap gap-1">
-            <Badge
-              variant="outline"
-              className={`text-xs font-medium border ${priorityColors[priority]}`}
-            >
+            <Badge variant="outline" className={`text-xs font-medium border ${priorityColors[priority]}`}>
               {priority}
             </Badge>
             {project_name && (
-              <Badge
-                variant="outline"
-                className="text-xs font-medium border bg-purple-50 text-purple-700 border-purple-200 flex items-center gap-1"
-              >
+              <Badge variant="outline" className="text-xs font-medium border bg-purple-50 text-purple-700 border-purple-200 flex items-center gap-1">
                 <Folder className="h-3 w-3" />
                 {project_name}
               </Badge>
@@ -340,43 +305,29 @@ export function TaskCard({
                 <span>Due: {new Date(task.due_date).toLocaleDateString()}</span>
               </div>
             )}
-            {task.assignee && (
+            {task.assignee_name && (
               <div className="flex items-center gap-1 text-xs text-gray-500">
                 <User className="h-3 w-3" />
-                <span>{task.assignee}</span>
+                <span>{task.assignee_name}</span>
               </div>
             )}
           </div>
 
-          {/* Progress */}
           <div className="space-y-1">
             <div className="flex justify-between text-xs text-gray-500">
               <span>Progress</span>
-              <span className="font-medium text-gray-700">
-                {progressPercentage}%
-              </span>
+              <span className="font-medium text-gray-700">{progressPercentage}%</span>
             </div>
             <div className="w-full bg-gray-200 rounded-full h-1.5">
-              <div
-                className="bg-blue-500 h-1.5 rounded-full transition-all duration-300"
-                style={{ width: `${progressPercentage}%` }}
-              />
+              <div className="bg-blue-500 h-1.5 rounded-full transition-all duration-300" style={{ width: `${progressPercentage}%` }} />
             </div>
           </div>
 
-          {/* Actions */}
           <div className="flex items-center justify-end gap-1 pt-1 border-t border-gray-100">
-            {/* Edit Button - Directly controls Dialog state */}
-            <Button
-              variant="ghost"
-              size="sm"
-              className="h-7 w-7 p-0 hover:bg-blue-50 hover:text-blue-600"
-              onClick={handleEditButtonClick}
-            >
+            <Button variant="ghost" size="sm" className="h-7 w-7 p-0 hover:bg-blue-50 hover:text-blue-600" onClick={handleEditButtonClick}>
               <Edit className="h-3 w-3" />
             </Button>
 
-            {/* Edit Dialog - No longer uses DialogTrigger asChild on the button */}
             <Dialog open={showEditForm} onOpenChange={setShowEditForm}>
               <DialogContent className="max-w-md">
                 <DialogHeader>
@@ -388,19 +339,19 @@ export function TaskCard({
                     title: task.title,
                     description: task.description || '',
                     priority: task.priority,
-                    assignee: task.assignee,
+                    assignee_id: task.assignee_id ?? null,  // <-- pass id here
                     due_date: task.due_date,
                     progress_percentage: task.progress_percentage,
-                    project_id: task.project_id,
+                    project_id: task.project_id ?? null,
                   }}
                   onSave={handleEditSave}
                   onCancel={() => setShowEditForm(false)}
                   projects={projects}
+                  users={[]} // Will be replaced by parent in edit dialog (KanbanBoard supplies users there)
                 />
               </DialogContent>
             </Dialog>
 
-            {/* Delete */}
             <AlertDialog open={alertOpen} onOpenChange={setAlertOpen}>
               <AlertDialogTrigger asChild>
                 <Button
@@ -419,15 +370,12 @@ export function TaskCard({
                 <AlertDialogHeader>
                   <AlertDialogTitle>Delete Task</AlertDialogTitle>
                   <AlertDialogDescription>
-                    Are you sure you want to delete "{task.title}"? This cannot be
-                    undone.
+                    Are you sure you want to delete "{task.title}"? This cannot be undone.
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
                   <AlertDialogCancel>Cancel</AlertDialogCancel>
-                  <AlertDialogAction onClick={handleDeleteConfirm}>
-                    Delete
-                  </AlertDialogAction>
+                  <AlertDialogAction onClick={handleDeleteConfirm}>Delete</AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>

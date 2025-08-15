@@ -11,22 +11,20 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { DialogFooter } from '@/components/ui/dialog';
-// ProjectForm itself doesn't make API calls directly, but it's good practice
-// to ensure it's rendered within an authenticated context if needed.
-// No direct 'useAuth' or 'token' needed here unless it were to fetch dynamic data.
 
 export type ProjectFormData = {
   name: string;
   description?: string;
   deadline?: string;
   status: 'Not Started' | 'In Progress' | 'Completed' | 'On Hold' | 'Cancelled';
-  assignee?: string | null; // New: Project Lead/Assignee
+  assignee_id?: string | null; // <-- store user id
 };
 
 export type ProjectFormProps = {
-  project?: ProjectFormData; // Optional prop for editing existing projects
+  project?: ProjectFormData;
   onSave: (data: ProjectFormData) => void;
   onCancel: () => void;
+  users: { id: string; name: string; email?: string | null }[]; // <-- pass users
 };
 
 const projectStatusOptions = [
@@ -37,25 +35,17 @@ const projectStatusOptions = [
   'Cancelled',
 ];
 
-const assignees = [ // Reusing assignees from TaskForm for consistency
-  'Zinhle Mpo',
-  'Audrey Van Wyk',
-  'Mike Johnson',
-  'Sarah Wilson',
-  'Tom Brown',
-];
 const assigneePlaceholderValue = 'unassigned';
 
-export function ProjectForm({ project, onSave, onCancel }: ProjectFormProps) {
+export function ProjectForm({ project, onSave, onCancel, users }: ProjectFormProps) {
   const [formData, setFormData] = useState<ProjectFormData>({
     name: project?.name || '',
     description: project?.description || '',
     deadline: project?.deadline || '',
     status: project?.status || 'Not Started',
-    assignee: project?.assignee ?? assigneePlaceholderValue, // Initialize assignee
+    assignee_id: project?.assignee_id ?? null,
   });
 
-  // Update form data if a project prop is passed (for editing)
   useEffect(() => {
     if (project) {
       setFormData({
@@ -63,18 +53,17 @@ export function ProjectForm({ project, onSave, onCancel }: ProjectFormProps) {
         description: project.description || '',
         deadline: project.deadline || '',
         status: project.status || 'Not Started',
-        assignee: project.assignee ?? assigneePlaceholderValue,
+        assignee_id: project.assignee_id ?? null,
       });
     }
   }, [project]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const dataToSave: ProjectFormData = {
+    onSave({
       ...formData,
-      assignee: formData.assignee === assigneePlaceholderValue ? null : formData.assignee,
-    };
-    onSave(dataToSave);
+      assignee_id: formData.assignee_id || null,
+    });
   };
 
   return (
@@ -113,9 +102,7 @@ export function ProjectForm({ project, onSave, onCancel }: ProjectFormProps) {
         <Label htmlFor="projectStatus">Status</Label>
         <Select
           value={formData.status}
-          onValueChange={(value) =>
-            setFormData({ ...formData, status: value as ProjectFormData['status'] })
-          }
+          onValueChange={(value) => setFormData({ ...formData, status: value as ProjectFormData['status'] })}
         >
           <SelectTrigger id="projectStatus">
             <SelectValue placeholder="Select status" />
@@ -130,21 +117,26 @@ export function ProjectForm({ project, onSave, onCancel }: ProjectFormProps) {
         </Select>
       </div>
 
-      {/* New: Project Assignee/Lead */}
+      {/* Project Lead (assignee_id) */}
       <div>
         <Label htmlFor="projectAssignee">Project Lead</Label>
         <Select
-          value={formData.assignee ?? assigneePlaceholderValue}
-          onValueChange={(value) => setFormData({ ...formData, assignee: value })}
+          value={formData.assignee_id ?? assigneePlaceholderValue}
+          onValueChange={(value) =>
+            setFormData({
+              ...formData,
+              assignee_id: value === assigneePlaceholderValue ? null : value,
+            })
+          }
         >
           <SelectTrigger id="projectAssignee">
             <SelectValue placeholder="Select project lead" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value={assigneePlaceholderValue}>Unassigned</SelectItem>
-            {assignees.map((name) => (
-              <SelectItem key={name} value={name}>
-                {name}
+            {users.map((u) => (
+              <SelectItem key={u.id} value={u.id}>
+                {u.name} {u.email ? `— ${u.email}` : ''}
               </SelectItem>
             ))}
           </SelectContent>
@@ -152,9 +144,7 @@ export function ProjectForm({ project, onSave, onCancel }: ProjectFormProps) {
       </div>
 
       <DialogFooter>
-        <Button type="submit">
-          {project ? 'Update Project' : 'Create Project'}
-        </Button>
+        <Button type="submit">{project ? 'Update Project' : 'Create Project'}</Button>
         <Button type="button" variant="ghost" onClick={onCancel}>
           Cancel
         </Button>

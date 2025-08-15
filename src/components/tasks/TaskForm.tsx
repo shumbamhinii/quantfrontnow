@@ -11,53 +11,48 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { DialogFooter } from '@/components/ui/dialog';
-// TaskForm itself doesn't make API calls directly, but it's good practice
-// to ensure it's rendered within an authenticated context if needed.
-// No direct 'useAuth' or 'token' needed here unless it were to fetch dynamic data.
 
-// Define Project interface (must match KanbanBoard.tsx)
 interface Project {
   id: string;
   name: string;
+}
+
+interface User {
+  id: string;
+  name: string;
+  email?: string | null;
 }
 
 export type TaskFormData = {
   title: string;
   description?: string;
   priority: 'Low' | 'Medium' | 'High';
-  assignee?: string | null;
+  assignee_id?: string | null;     // <-- use id
   due_date?: string;
   progress_percentage: number;
-  project_id?: string | null; // New: project_id
+  project_id?: string | null;
 };
 
 export type TaskFormProps = {
   task?: TaskFormData;
   onSave: (data: TaskFormData) => void | Promise<void>;
   onCancel: () => void;
-  projects: Project[]; // New: Pass projects list to the form
+  projects: Project[];
+  users: User[];                    // <-- pass users in
 };
 
 const assigneePlaceholderValue = 'unassigned';
-const projectPlaceholderValue = 'unassigned'; // New placeholder for projects
+const projectPlaceholderValue = 'unassigned';
 
-const assignees = [
-  'Zinhle Mpo',
-  'Audrey Van Wyk',
-  'Mike Johnson',
-  'Sarah Wilson',
-  'Tom Brown',
-];
-
-export function TaskForm({ task, onSave, onCancel, projects }: TaskFormProps) {
+export function TaskForm({ task, onSave, onCancel, projects, users }: TaskFormProps) {
   const [formData, setFormData] = useState<TaskFormData>({
     title: task?.title || '',
     description: task?.description || '',
     priority: task?.priority || 'Medium',
-    assignee: task?.assignee ?? assigneePlaceholderValue,
+    assignee_id: task?.assignee_id ?? null,
     due_date: task?.due_date || '',
     progress_percentage: task?.progress_percentage ?? 0,
-    project_id: task?.project_id ?? projectPlaceholderValue, // Initialize project_id
+    project_id: task?.project_id ?? null,
   });
 
   useEffect(() => {
@@ -65,23 +60,20 @@ export function TaskForm({ task, onSave, onCancel, projects }: TaskFormProps) {
       title: task?.title || '',
       description: task?.description || '',
       priority: task?.priority || 'Medium',
-      assignee: task?.assignee ?? assigneePlaceholderValue,
+      assignee_id: task?.assignee_id ?? null,
       due_date: task?.due_date || '',
       progress_percentage: task?.progress_percentage ?? 0,
-      project_id: task?.project_id ?? projectPlaceholderValue, // Update project_id on task change
+      project_id: task?.project_id ?? null,
     });
   }, [task]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    const dataToSave: TaskFormData = {
+    onSave({
       ...formData,
-      assignee:
-        formData.assignee === assigneePlaceholderValue ? null : formData.assignee,
-      project_id:
-        formData.project_id === projectPlaceholderValue ? null : formData.project_id, // Handle unassigned project
-    };
-    onSave(dataToSave);
+      assignee_id: formData.assignee_id || null,
+      project_id: formData.project_id || null,
+    });
   };
 
   return (
@@ -101,9 +93,7 @@ export function TaskForm({ task, onSave, onCancel, projects }: TaskFormProps) {
         <Textarea
           id="description"
           value={formData.description}
-          onChange={(e) =>
-            setFormData({ ...formData, description: e.target.value })
-          }
+          onChange={(e) => setFormData({ ...formData, description: e.target.value })}
           rows={3}
         />
       </div>
@@ -112,9 +102,7 @@ export function TaskForm({ task, onSave, onCancel, projects }: TaskFormProps) {
         <Label htmlFor="priority">Priority</Label>
         <Select
           value={formData.priority}
-          onValueChange={(value) =>
-            setFormData({ ...formData, priority: value as 'Low' | 'Medium' | 'High' })
-          }
+          onValueChange={(value) => setFormData({ ...formData, priority: value as 'Low' | 'Medium' | 'High' })}
         >
           <SelectTrigger id="priority">
             <SelectValue placeholder="Select priority" />
@@ -130,17 +118,22 @@ export function TaskForm({ task, onSave, onCancel, projects }: TaskFormProps) {
       <div>
         <Label htmlFor="assignee">Assignee</Label>
         <Select
-          value={formData.assignee ?? assigneePlaceholderValue}
-          onValueChange={(value) => setFormData({ ...formData, assignee: value })}
+          value={formData.assignee_id ?? assigneePlaceholderValue}
+          onValueChange={(value) =>
+            setFormData({
+              ...formData,
+              assignee_id: value === assigneePlaceholderValue ? null : value,
+            })
+          }
         >
           <SelectTrigger id="assignee">
             <SelectValue placeholder="Select assignee" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value={assigneePlaceholderValue}>Unassigned</SelectItem>
-            {assignees.map((name) => (
-              <SelectItem key={name} value={name}>
-                {name}
+            {users.map((u) => (
+              <SelectItem key={u.id} value={u.id}>
+                {u.name} {u.email ? `— ${u.email}` : ''}
               </SelectItem>
             ))}
           </SelectContent>
@@ -151,7 +144,12 @@ export function TaskForm({ task, onSave, onCancel, projects }: TaskFormProps) {
         <Label htmlFor="project">Project</Label>
         <Select
           value={formData.project_id ?? projectPlaceholderValue}
-          onValueChange={(value) => setFormData({ ...formData, project_id: value })}
+          onValueChange={(value) =>
+            setFormData({
+              ...formData,
+              project_id: value === projectPlaceholderValue ? null : value,
+            })
+          }
         >
           <SelectTrigger id="project">
             <SelectValue placeholder="Select project" />
@@ -185,9 +183,7 @@ export function TaskForm({ task, onSave, onCancel, projects }: TaskFormProps) {
           min={0}
           max={100}
           value={formData.progress_percentage}
-          onChange={(e) =>
-            setFormData({ ...formData, progress_percentage: Number(e.target.value) })
-          }
+          onChange={(e) => setFormData({ ...formData, progress_percentage: Number(e.target.value) })}
           required
         />
       </div>
